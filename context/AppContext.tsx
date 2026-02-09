@@ -209,37 +209,58 @@ function isProfessionalActiveNow(prof: Professional, todayStr: string): boolean 
   return true;
 }
 
+function readLocalStorageJson<T>(keys: readonly string[]): T | null {
+  for (const key of keys) {
+    try {
+      const item = window.localStorage.getItem(key);
+      if (item) return JSON.parse(item) as T;
+    } catch {}
+  }
+  return null;
+}
+
 export const AppProvider = ({ children }: PropsWithChildren) => {
   // ✅ Agora as crianças vêm do Firestore
   const [childrenData, setChildrenData] = useState<Child[]>([]);
 
-  // ✅ Mantidos no localStorage (por enquanto)
-  const [templatesData, setTemplatesData] = useLocalStorage<RoutineTemplate[]>(
-    "kiddo-routines-templates",
-    []
-  );
+  // ✅ NOVO: vem do AuthGate
+  const [familyId, setFamilyId] = useState<string | null>(null);
+  const storageScope = familyId ?? "guest";
+  const storageKey = (base: string) => `${base}:${storageScope}`;
+
+  // ✅ Templates agora vêm do Firestore (com migração do localStorage)
+  const [templatesData, setTemplatesData] = useState<RoutineTemplate[]>([]);
+  const templatesSeededRef = useRef(false);
+
   const [shopRewardsData, setShopRewardsData] = useLocalStorage<ShopReward[]>(
-    "kiddo-routines-shop-rewards",
-    []
+    storageKey("kiddo-routines-shop-rewards"),
+    [],
+    ["kiddo-routines-shop-rewards"]
   );
   const [redeemedRewardsData, setRedeemedRewardsData] = useLocalStorage<RedeemedReward[]>(
-    "kiddo-routines-redeemed",
-    []
+    storageKey("kiddo-routines-redeemed"),
+    [],
+    ["kiddo-routines-redeemed"]
   );
 
   // ✅ continua local, MAS familyLocation vai ser controlado pelo Firestore
-  const [settings, setSettings] = useLocalStorage<AppSettings>("kiddo-routines-settings", {
-    pin: null,
-    adminPin: null,
-  });
+  const [settings, setSettings] = useLocalStorage<AppSettings>(
+    storageKey("kiddo-routines-settings"),
+    {
+      pin: null,
+      adminPin: null,
+    },
+    ["kiddo-routines-settings"]
+  );
 
   const [favoriteProfessionalIds, setFavoriteProfessionalIds] = useState<string[]>([]);
   const [uid, setUid] = useState<string | null>(null);
 
 
   const [supportNetworkProfessionals, setSupportNetworkProfessionals] = useLocalStorage<Professional[]>(
-    "support-network-professionals",
-    SUPPORT_NETWORK_SEED
+    storageKey("support-network-professionals"),
+    SUPPORT_NETWORK_SEED,
+    ["support-network-professionals"]
   );
   const [supportNetworkPricing, setSupportNetworkPricing] = useState<SupportNetworkPricing>({
     plans: {
@@ -253,12 +274,11 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   const latestSupportNetworkRef = useRef<Professional[]>(supportNetworkProfessionals);
 
   const [productRecommendations, setProductRecommendations] = useLocalStorage<Recommendation[]>(
-    "productRecommendations",
-    PRODUCTS_SEED
+    storageKey("productRecommendations"),
+    PRODUCTS_SEED,
+    ["productRecommendations"]
   );
 
-  // ✅ NOVO: vem do AuthGate
-  const [familyId, setFamilyId] = useState<string | null>(null);
   const [isFamilyOwner, setIsFamilyOwner] = useState(false);
   const [canManageMembers, setCanManageMembers] = useState(false);
   const [canEditChildren, setCanEditChildren] = useState(false);
@@ -391,6 +411,8 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     // limpa imediatamente para nao "vazar"
     setChildrenData([]);
     setSettings((prev) => ({ ...prev, familyLocation: undefined }));
+    setTemplatesData([]);
+    templatesSeededRef.current = false;
 
     if (!familyId) return;
 
@@ -420,9 +442,55 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       setChildrenData(kids);
     });
 
+    const templatesRef = collection(db, "families", familyId, "routineTemplates");
+    const unsubTemplates = onSnapshot(templatesRef, (snap) => {
+      const templates = snap.docs.map((d) => {
+        const data = d.data() as any;
+        return {
+          id: d.id,
+          name: data.name,
+          icon: data.icon,
+          reward: data.reward,
+          schedule: data.schedule,
+        } as RoutineTemplate;
+      });
+      setTemplatesData(templates);
+
+      if (!templatesSeededRef.current) {
+        if (templates.length > 0) {
+          templatesSeededRef.current = true;
+          return;
+        }
+
+        const legacyTemplates =
+          readLocalStorageJson<RoutineTemplate[]>([
+            `kiddo-routines-templates:${familyId}`,
+            "kiddo-routines-templates",
+          ]) ?? [];
+
+        if (legacyTemplates.length === 0) {
+          templatesSeededRef.current = true;
+          return;
+        }
+
+        templatesSeededRef.current = true;
+        legacyTemplates.forEach((template) => {
+          const payload = stripUndefinedDeep({
+            ...template,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          setDoc(doc(db, "families", familyId, "routineTemplates", template.id), payload, {
+            merge: true,
+          }).catch((err) => console.error("Falha ao migrar template:", err));
+        });
+      }
+    });
+
     return () => {
       unsubSettings();
       unsubKids();
+      unsubTemplates();
     };
   }, [familyId, setSettings]);
 
@@ -884,13 +952,38 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   // ============================================================
 
   const addRoutineTemplate = (templateData: Omit<RoutineTemplate, "id">) => {
-    setTemplatesData((prev) => [...prev, { ...templateData, id: `template-${Date.now()}` }]);
+    if (!familyId) return;
+    const id = `template-${crypto.randomUUID()}`;
+    const newTemplate: RoutineTemplate = { ...templateData, id };
+
+    setTemplatesData((prev) => [...prev, newTemplate]);
+    const payload = stripUndefinedDeep({
+      ...newTemplate,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    setDoc(doc(db, "families", familyId, "routineTemplates", id), payload, { merge: true }).catch(
+      (err) => console.error("Falha ao salvar template:", err)
+    );
   };
   const updateRoutineTemplate = (template: RoutineTemplate) => {
+    if (!familyId) return;
     setTemplatesData((prev) => prev.map((t) => (t.id === template.id ? template : t)));
+    const payload = stripUndefinedDeep({
+      ...template,
+      updatedAt: serverTimestamp(),
+    });
+    setDoc(doc(db, "families", familyId, "routineTemplates", template.id), payload, { merge: true }).catch(
+      (err) => console.error("Falha ao atualizar template:", err)
+    );
   };
   const deleteRoutineTemplate = (templateId: string) => {
+    if (!familyId) return;
     setTemplatesData((prev) => prev.filter((t) => t.id !== templateId));
+    deleteDoc(doc(db, "families", familyId, "routineTemplates", templateId)).catch((err) =>
+      console.error("Falha ao excluir template:", err)
+    );
   };
 
   const addShopReward = (rewardData: Omit<ShopReward, "id">) => {

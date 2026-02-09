@@ -1,22 +1,34 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-function readValue<T>(key: string, initialValue: T): T {
+function readValue<T>(key: string, initialValue: T, legacyKeys: readonly string[]): T {
   try {
     const item = window.localStorage.getItem(key);
-    return item ? (JSON.parse(item) as T) : initialValue;
+    if (item) return JSON.parse(item) as T;
+    for (const legacyKey of legacyKeys) {
+      const legacyItem = window.localStorage.getItem(legacyKey);
+      if (legacyItem) return JSON.parse(legacyItem) as T;
+    }
+    return initialValue;
   } catch {
     return initialValue;
   }
 }
 
-export default function useLocalStorage<T>(key: string, initialValue: T) {
-  const [storedValue, setStoredValue] = useState<T>(() => readValue(key, initialValue));
+export default function useLocalStorage<T>(
+  key: string,
+  initialValue: T,
+  legacyKeys: readonly string[] = []
+) {
+  const legacyKeySignature = useMemo(() => legacyKeys.join("|"), [legacyKeys]);
+  const [storedValue, setStoredValue] = useState<T>(() =>
+    readValue(key, initialValue, legacyKeys)
+  );
 
   // ✅ quando a KEY muda (ex: troca de usuário), recarrega do localStorage correto
   useEffect(() => {
-    setStoredValue(readValue(key, initialValue));
+    setStoredValue(readValue(key, initialValue, legacyKeys));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, legacyKeySignature]);
 
   // ✅ sempre salva no localStorage da KEY atual
   useEffect(() => {
