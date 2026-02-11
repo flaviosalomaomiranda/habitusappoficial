@@ -51,7 +51,6 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../src/lib/firebase";
-import { isAdminUser } from "../src/lib/admin";
 import {
   ensureUserAndFamily,
   listenFamilySettings,
@@ -330,7 +329,6 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       master: { monthly: 0, annual: 0 },
     },
   });
-  const [supportNetworkSeeded, setSupportNetworkSeeded] = useState(false);
   const latestSupportNetworkRef = useRef<Professional[]>(supportNetworkProfessionals);
 
   const [productRecommendations, setProductRecommendations] = useLocalStorage<Recommendation[]>(
@@ -705,47 +703,19 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       collection(db, "supportNetwork"),
       (snap) => {
         const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Professional[];
-        if (docs.length > 0) {
-          setSupportNetworkProfessionals(docs);
-          return;
-        }
-
-        const localList = latestSupportNetworkRef.current || [];
-        if (localList.length === 0) {
-          applyRestFallback().catch(() => null);
-          if (SUPPORT_NETWORK_SEED.length > 0) {
-            setSupportNetworkProfessionals(SUPPORT_NETWORK_SEED);
-          }
-        }
-        const seedSource = localList.length > 0 ? localList : SUPPORT_NETWORK_SEED;
-        const isAdmin = isAdminUser(auth.currentUser?.email || "");
-
-        if (!supportNetworkSeeded && seedSource.length > 0 && isAdmin) {
-          setSupportNetworkSeeded(true);
-          seedSource.forEach((prof) => {
-            setDoc(
-              doc(db, "supportNetwork", prof.id),
-              { ...prof, updatedAt: serverTimestamp() },
-              { merge: true }
-            ).catch((err) => console.error("Falha ao semear supportNetwork:", err));
-          });
-        }
+        // Reflete exatamente o estado da coleção na nuvem (inclusive quando vazia)
+        setSupportNetworkProfessionals(docs);
       },
       (err) => {
         console.error("Falha ao ler supportNetwork:", err);
-        if ((latestSupportNetworkRef.current || []).length === 0) {
-          applyRestFallback().catch(() => null);
-          if (SUPPORT_NETWORK_SEED.length > 0) {
-            setSupportNetworkProfessionals(SUPPORT_NETWORK_SEED);
-          }
-        }
+        applyRestFallback().catch(() => null);
       }
     );
     return () => {
       cancelled = true;
       unsub();
     };
-  }, [supportNetworkSeeded, uid]);
+  }, [uid]);
 
   const updateSupportNetworkPricing = async (plans: SupportNetworkPricing["plans"]) => {
     await setDoc(
@@ -806,17 +776,10 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     ).catch((err) => console.error("Falha ao salvar favoritos:", err));
   };
 
-  const supportNetworkForDisplay = useMemo(() => {
-    if (supportNetworkProfessionals.length > 0) return supportNetworkProfessionals;
-    return SUPPORT_NETWORK_SEED;
-  }, [supportNetworkProfessionals]);
-
   const activeSupportNetworkProfessionals = useMemo(() => {
     const todayStr = getTodayDateString();
-    const active = supportNetworkForDisplay.filter((p) => isProfessionalActiveNow(p, todayStr));
-    if (active.length > 0) return active;
-    return supportNetworkForDisplay.filter((p) => p.isActive !== false);
-  }, [supportNetworkForDisplay]);
+    return supportNetworkProfessionals.filter((p) => isProfessionalActiveNow(p, todayStr));
+  }, [supportNetworkProfessionals]);
 
   const updateUserProfile = async (profile: UserProfile) => {
     if (!uid) {
