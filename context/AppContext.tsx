@@ -697,6 +697,10 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       }
     };
 
+    if ((latestSupportNetworkRef.current || []).length === 0) {
+      applyRestFallback().catch(() => null);
+    }
+
     const unsub = onSnapshot(
       collection(db, "supportNetwork"),
       (snap) => {
@@ -741,7 +745,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       cancelled = true;
       unsub();
     };
-  }, [supportNetworkSeeded]);
+  }, [supportNetworkSeeded, uid]);
 
   const updateSupportNetworkPricing = async (plans: SupportNetworkPricing["plans"]) => {
     await setDoc(
