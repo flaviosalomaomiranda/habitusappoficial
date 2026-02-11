@@ -806,10 +806,17 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     ).catch((err) => console.error("Falha ao salvar favoritos:", err));
   };
 
+  const supportNetworkForDisplay = useMemo(() => {
+    if (supportNetworkProfessionals.length > 0) return supportNetworkProfessionals;
+    return SUPPORT_NETWORK_SEED;
+  }, [supportNetworkProfessionals]);
+
   const activeSupportNetworkProfessionals = useMemo(() => {
     const todayStr = getTodayDateString();
-    return supportNetworkProfessionals.filter((p) => isProfessionalActiveNow(p, todayStr));
-  }, [supportNetworkProfessionals]);
+    const active = supportNetworkForDisplay.filter((p) => isProfessionalActiveNow(p, todayStr));
+    if (active.length > 0) return active;
+    return supportNetworkForDisplay.filter((p) => p.isActive !== false);
+  }, [supportNetworkForDisplay]);
 
   const updateUserProfile = async (profile: UserProfile) => {
     if (!uid) {
