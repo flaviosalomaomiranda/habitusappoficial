@@ -239,6 +239,44 @@ function normalizeChildName(name: string): string {
   return name.trim().slice(0, MAX_CHILD_NAME_LENGTH);
 }
 
+function readFirestorePrimitive(value: any): any {
+  if (!value || typeof value !== "object") return undefined;
+  if ("stringValue" in value) return value.stringValue;
+  if ("booleanValue" in value) return Boolean(value.booleanValue);
+  if ("integerValue" in value) return Number(value.integerValue);
+  if ("doubleValue" in value) return Number(value.doubleValue);
+  if ("timestampValue" in value) return value.timestampValue;
+  if ("nullValue" in value) return null;
+  if ("arrayValue" in value) {
+    const values = value.arrayValue?.values || [];
+    return values.map((item: any) => readFirestorePrimitive(item));
+  }
+  if ("mapValue" in value) {
+    const fields = value.mapValue?.fields || {};
+    const out: Record<string, any> = {};
+    Object.entries(fields).forEach(([k, v]) => {
+      out[k] = readFirestorePrimitive(v);
+    });
+    return out;
+  }
+  return undefined;
+}
+
+function parseFirestoreDocumentToProfessional(doc: any): Professional | null {
+  const fields = doc?.document?.fields;
+  if (!fields || typeof fields !== "object") return null;
+  const mapped: Record<string, any> = {};
+  Object.entries(fields).forEach(([key, value]) => {
+    mapped[key] = readFirestorePrimitive(value);
+  });
+  if (!mapped.id && typeof doc?.document?.name === "string") {
+    const parts = doc.document.name.split("/");
+    mapped.id = parts[parts.length - 1];
+  }
+  if (!mapped.id || !mapped.name) return null;
+  return mapped as Professional;
+}
+
 export const AppProvider = ({ children }: PropsWithChildren) => {
   const { confirm, showToast } = useFeedback();
   // ✅ Agora as crianças vêm do Firestore
@@ -309,6 +347,34 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [managerProfile, setManagerProfile] = useState<Manager | null>(null);
   const [isManager, setIsManager] = useState(false);
+
+  const fetchSupportNetworkViaRest = async () => {
+    const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined;
+    const apiKey = import.meta.env.VITE_FIREBASE_API_KEY as string | undefined;
+    if (!projectId || !apiKey) return [] as Professional[];
+
+    const endpoint = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
+    const body = {
+      structuredQuery: {
+        from: [{ collectionId: "supportNetwork" }],
+        limit: 250,
+      },
+    };
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new Error(`REST supportNetwork status ${response.status}`);
+    }
+    const raw = await response.json();
+    if (!Array.isArray(raw)) return [] as Professional[];
+    return raw
+      .map(parseFirestoreDocumentToProfessional)
+      .filter((item): item is Professional => Boolean(item));
+  };
 
   // ? NOVO: pega uid do usuario logado
   useEffect(() => {
@@ -620,6 +686,17 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    const applyRestFallback = async () => {
+      try {
+        const docs = await fetchSupportNetworkViaRest();
+        if (cancelled || docs.length === 0) return;
+        setSupportNetworkProfessionals(docs);
+      } catch (err) {
+        console.error("Falha no fallback REST supportNetwork:", err);
+      }
+    };
+
     const unsub = onSnapshot(
       collection(db, "supportNetwork"),
       (snap) => {
@@ -631,7 +708,10 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
 
         const localList = latestSupportNetworkRef.current || [];
         if (localList.length === 0) {
-          setSupportNetworkProfessionals(SUPPORT_NETWORK_SEED);
+          applyRestFallback().catch(() => null);
+          if (SUPPORT_NETWORK_SEED.length > 0) {
+            setSupportNetworkProfessionals(SUPPORT_NETWORK_SEED);
+          }
         }
         const seedSource = localList.length > 0 ? localList : SUPPORT_NETWORK_SEED;
         const isAdmin = isAdminUser(auth.currentUser?.email || "");
@@ -650,11 +730,17 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       (err) => {
         console.error("Falha ao ler supportNetwork:", err);
         if ((latestSupportNetworkRef.current || []).length === 0) {
-          setSupportNetworkProfessionals(SUPPORT_NETWORK_SEED);
+          applyRestFallback().catch(() => null);
+          if (SUPPORT_NETWORK_SEED.length > 0) {
+            setSupportNetworkProfessionals(SUPPORT_NETWORK_SEED);
+          }
         }
       }
     );
-    return () => unsub();
+    return () => {
+      cancelled = true;
+      unsub();
+    };
   }, [supportNetworkSeeded]);
 
   const updateSupportNetworkPricing = async (plans: SupportNetworkPricing["plans"]) => {
