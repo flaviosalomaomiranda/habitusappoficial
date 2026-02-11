@@ -108,6 +108,44 @@ const formatCep = (value: string) => {
     return digits.replace(/(\d{5})(\d)/, "$1-$2");
 };
 
+const readFirestorePrimitive = (value: any): any => {
+    if (!value || typeof value !== "object") return undefined;
+    if ("stringValue" in value) return value.stringValue;
+    if ("booleanValue" in value) return Boolean(value.booleanValue);
+    if ("integerValue" in value) return Number(value.integerValue);
+    if ("doubleValue" in value) return Number(value.doubleValue);
+    if ("timestampValue" in value) return value.timestampValue;
+    if ("nullValue" in value) return null;
+    if ("arrayValue" in value) {
+        const values = value.arrayValue?.values || [];
+        return values.map((item: any) => readFirestorePrimitive(item));
+    }
+    if ("mapValue" in value) {
+        const fields = value.mapValue?.fields || {};
+        const out: Record<string, any> = {};
+        Object.entries(fields).forEach(([k, v]) => {
+            out[k] = readFirestorePrimitive(v);
+        });
+        return out;
+    }
+    return undefined;
+};
+
+const parseFirestoreDocToProfessional = (doc: any): Professional | null => {
+    const fields = doc?.document?.fields;
+    if (!fields || typeof fields !== "object") return null;
+    const mapped: Record<string, any> = {};
+    Object.entries(fields).forEach(([key, value]) => {
+        mapped[key] = readFirestorePrimitive(value);
+    });
+    if (!mapped.id && typeof doc?.document?.name === "string") {
+        const parts = doc.document.name.split("/");
+        mapped.id = parts[parts.length - 1];
+    }
+    if (!mapped.id || !mapped.name) return null;
+    return mapped as Professional;
+};
+
 const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ onClose }) => {
     const { 
         supportNetworkProfessionals, 
@@ -128,6 +166,47 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
     const [isFormOpen, setIsFormOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const todayStr = new Date().toISOString().slice(0, 10);
+    const [restProfessionals, setRestProfessionals] = useState<Professional[]>([]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const fetchSupportNetwork = async () => {
+            try {
+                const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined;
+                const apiKey = import.meta.env.VITE_FIREBASE_API_KEY as string | undefined;
+                if (!projectId || !apiKey) return;
+                const endpoint = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
+                const body = {
+                    structuredQuery: {
+                        from: [{ collectionId: "supportNetwork" }],
+                        limit: 500,
+                    },
+                };
+                const response = await fetch(endpoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body),
+                });
+                if (!response.ok) return;
+                const raw = await response.json();
+                if (!Array.isArray(raw)) return;
+                const docs = raw
+                    .map(parseFirestoreDocToProfessional)
+                    .filter((item): item is Professional => Boolean(item));
+                if (cancelled || docs.length === 0) return;
+                setRestProfessionals(docs);
+                setSupportNetworkProfessionals(docs);
+            } catch {
+                // fallback silencioso: mantém a lista atual do contexto
+            }
+        };
+        fetchSupportNetwork();
+        return () => {
+            cancelled = true;
+        };
+    }, [setSupportNetworkProfessionals]);
+
+    const professionalsForAdmin = restProfessionals.length > 0 ? restProfessionals : supportNetworkProfessionals;
 
     const getStatusLabel = (prof: Professional) => {
         const todayStart = new Date(todayStr + "T00:00:00");
@@ -306,7 +385,7 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                             <tr><th className="p-2">Nome</th><th>Cidade/UF</th><th>Especialidades</th><th>Tier</th><th>Status</th><th>Ações</th></tr>
                         </thead>
                         <tbody>
-                            {supportNetworkProfessionals
+                            {professionalsForAdmin
                                 .filter((prof) => {
                                     if (!isManager || !managerProfile) return true;
                                     return prof.uf === managerProfile.uf && managerProfile.cityIds.includes(String(prof.cityId));
