@@ -149,7 +149,6 @@ const parseFirestoreDocToProfessional = (doc: any): Professional | null => {
 const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ onClose }) => {
     const { 
         supportNetworkProfessionals, 
-        setSupportNetworkProfessionals,
         settings, 
         setAdminPin,
         checkAdminPin,
@@ -195,7 +194,6 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                     .filter((item): item is Professional => Boolean(item));
                 if (cancelled || docs.length === 0) return;
                 setRestProfessionals(docs);
-                setSupportNetworkProfessionals(docs);
             } catch {
                 // fallback silencioso: mantém a lista atual do contexto
             }
@@ -204,7 +202,7 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
         return () => {
             cancelled = true;
         };
-    }, [setSupportNetworkProfessionals]);
+    }, []);
 
     const professionalsForAdmin = supportNetworkProfessionals.length > 0 ? supportNetworkProfessionals : restProfessionals;
 
