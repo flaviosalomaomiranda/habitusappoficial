@@ -12,8 +12,6 @@ interface SupportNetworkPageProps {
 
 const GOOGLE_FORMS_URL = ""; 
 
-const BIO_MAX_CHARS = 180;
-
 const getSpecialtiesLabel = (professional: Professional) => {
     const list = professional.specialties && professional.specialties.length > 0
         ? professional.specialties
@@ -46,12 +44,17 @@ const buildWhatsAppLink = (phone: string, message: string) => {
     return `https://wa.me/55${cleaned}?text=${text}`;
 };
 
+const isProTier = (tier?: string) => tier === "top" || tier === "pro";
+const isListedTier = (tier?: string) => tier === "verified" || tier === "listed";
+const isFavoritableTier = (tier?: string) => isProTier(tier) || tier === "exclusive";
+
 const ProfessionalCard: React.FC<{ professional: Professional, isFeatured?: boolean }> = ({ professional, isFeatured }) => {
     const { favoriteProfessionalIds, toggleFavoriteProfessional } = useAppContext();
     const isFavorite = favoriteProfessionalIds.includes(professional.id);
     const { contacts } = professional;
 
-    const isPremium = professional.tier === 'master' || professional.tier === 'exclusive' || professional.tier === 'top';
+    const isPremium = professional.tier === 'exclusive' || isProTier(professional.tier);
+    const canFavorite = isFavoritableTier(professional.tier);
 
     const cardStyles = isPremium 
         ? 'bg-gradient-to-tr from-yellow-50 to-amber-100 border-amber-300 shadow-lg'
@@ -59,11 +62,11 @@ const ProfessionalCard: React.FC<{ professional: Professional, isFeatured?: bool
 
     return (
         <div className={`rounded-2xl p-4 w-full transition-all relative ${cardStyles}`}>
-             {professional.tier !== 'verified' && (
+             {!isListedTier(professional.tier) && (
                 <div className={`absolute -top-3 -right-3 font-black text-[10px] px-3 py-1.5 rounded-full shadow-md transform rotate-6 ${
                     professional.tier === 'exclusive' ? 'bg-indigo-600 text-white' : 'bg-amber-400 text-amber-900'
                 }`}>
-                    {professional.tier === 'exclusive' ? '⭐ EXCLUSIVO' : '⭐ PRO DA CIDADE'}
+                    {professional.tier === 'exclusive' ? '⭐ EXCLUSIVO' : '⭐ PRO'}
                 </div>
             )}
             {isFeatured && (
@@ -82,15 +85,17 @@ const ProfessionalCard: React.FC<{ professional: Professional, isFeatured?: bool
                         <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="font-bold text-lg text-gray-800 leading-tight">{professional.name}</h3>
-                                <button
-                                    onClick={() => toggleFavoriteProfessional(professional.id)}
-                                    className={`flex-shrink-0 p-1.5 rounded-full transition-colors ${
-                                        isFavorite ? "bg-red-50 text-red-600" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                                    }`}
-                                    aria-label={isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
-                                >
-                                    <HeartIcon filled={isFavorite} className={`w-4 h-4 ${isFavorite ? 'text-red-500' : 'text-gray-400'}`} />
-                                </button>
+                                {canFavorite && (
+                                    <button
+                                        onClick={() => toggleFavoriteProfessional(professional.id)}
+                                        className={`flex-shrink-0 p-1.5 rounded-full transition-colors ${
+                                            isFavorite ? "bg-red-50 text-red-600" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                                        }`}
+                                        aria-label={isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+                                    >
+                                        <HeartIcon filled={isFavorite} className={`w-4 h-4 ${isFavorite ? 'text-red-500' : 'text-gray-400'}`} />
+                                    </button>
+                                )}
                                 {professional.verified && (
                                     <span className="text-xs bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full whitespace-nowrap">✅ Registro verificado</span>
                                 )}
@@ -106,11 +111,6 @@ const ProfessionalCard: React.FC<{ professional: Professional, isFeatured?: bool
                             <span className="font-normal">{truncateChars(professional.headline, 90)}</span>
                         </p>
                     )}
-                    {professional.bio && (
-                        <p className="mt-2 text-xs text-gray-700 leading-relaxed line-clamp-3 bg-amber-100/70 rounded-md px-2 py-2">
-                            {truncateChars(professional.bio, BIO_MAX_CHARS)}
-                        </p>
-                    )}
                     <p className="text-xs text-gray-500 mt-2 flex items-center gap-1"><MapPinIcon className="w-3 h-3"/> {professional.city} / {professional.uf}</p>
                     
                 </div>
@@ -118,8 +118,7 @@ const ProfessionalCard: React.FC<{ professional: Professional, isFeatured?: bool
              {/* Conteúdo Premium */}
              {isPremium && (
                 <div className="mt-3 pt-3 border-t border-amber-200/50 space-y-3">
-                    {professional.highlights && professional.highlights.length > 0 && <div><h4 className="font-bold text-[10px] text-amber-800 uppercase">Destaques</h4><div className="flex flex-wrap gap-1.5 mt-1">{professional.highlights.map(s => <span key={s} className="bg-amber-200/50 text-amber-900 text-[11px] font-semibold px-2 py-0.5 rounded-full">{s}</span>)}</div></div>}
-                    {professional.galleryUrls && professional.galleryUrls.length > 0 && <div className="flex gap-2 overflow-x-auto no-scrollbar pt-1">{professional.galleryUrls.map((url, i) => <img key={i} src={url} alt={`Galeria ${i+1}`} className="w-24 h-16 object-cover rounded-md border-2 border-white shadow-sm" />)}</div>}
+                    {professional.highlights && professional.highlights.length > 0 && <div><h4 className="font-bold text-[10px] text-amber-800 uppercase">Destaques</h4><div className="flex flex-wrap gap-1.5 mt-1">{professional.highlights.slice(0, 3).map(s => <span key={s} className="bg-amber-200/50 text-amber-900 text-[11px] font-semibold px-2 py-0.5 rounded-full">{s}</span>)}</div></div>}
                 </div>
             )}
 
@@ -133,13 +132,12 @@ const ProfessionalCard: React.FC<{ professional: Professional, isFeatured?: bool
                             rel="noopener noreferrer"
                             className="flex-1 text-center bg-cyan-500 text-white font-bold text-xs py-2 px-3 rounded-lg hover:bg-cyan-600 transition-colors whitespace-nowrap"
                         >
-                            Agendar consulta
+                            Entrar em contato
                         </a>
                     )}
                     {contacts.phone && <a href={`tel:+55${contacts.phone.replace(/\D/g, '')}`} className="flex-1 text-center bg-purple-100 text-purple-700 font-bold text-xs py-2 px-3 rounded-lg hover:bg-purple-200 transition-colors whitespace-nowrap">Ligar</a>}
                     {contacts.maps && <a href={contacts.maps} target="_blank" rel="noopener noreferrer" className="flex-1 text-center bg-blue-100 text-blue-700 font-bold text-xs py-2 px-3 rounded-lg hover:bg-blue-200 transition-colors whitespace-nowrap">Localização</a>}
-                    
-                    {isPremium && professional.videoUrl && <a href={professional.videoUrl} target="_blank" rel="noopener noreferrer" className="flex-1 text-center bg-red-500 text-white font-bold text-xs py-2 px-3 rounded-lg hover:bg-red-600 transition-colors whitespace-nowrap">Vídeos</a>}
+                    {professional.tier === "exclusive" && <button type="button" className="flex-1 text-center bg-purple-600 text-white font-bold text-xs py-2 px-3 rounded-lg hover:bg-purple-700 transition-colors whitespace-nowrap">Rotinas personalizadas</button>}
                  </div>
             </div>
         </div>
@@ -223,15 +221,15 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
     };
     
     const filteredProfessionals = useMemo(() => {
-        if (!selectedState || !selectedCity || !selectedSpecialty) return [];
-        
-        return activeSupportNetworkProfessionals.filter(p =>
-            p.tier !== 'master' &&
-            p.uf === selectedState &&
-            String(p.cityId) === selectedCity &&
-            (p.specialties?.includes(selectedSpecialty) || p.specialty === selectedSpecialty) &&
-            p.name.toLowerCase().includes(searchQuery.toLowerCase())
-        );
+        if (!selectedState || !selectedCity) return [];
+
+        return activeSupportNetworkProfessionals.filter(p => {
+            const matchesTier = p.tier !== 'master';
+            const matchesLocation = p.uf === selectedState && String(p.cityId) === selectedCity;
+            const matchesSpecialty = !selectedSpecialty || (p.specialties?.includes(selectedSpecialty) || p.specialty === selectedSpecialty);
+            const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+            return matchesTier && matchesLocation && matchesSpecialty && matchesSearch;
+        });
     }, [selectedState, selectedCity, selectedSpecialty, searchQuery, activeSupportNetworkProfessionals]);
     
     // Novo Agrupamento: Exclusive no topo
@@ -242,7 +240,7 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
     const { topProfessionals, rotationPeriod } = useMemo(() => {
         if (!filteredProfessionals) return { topProfessionals: [], rotationPeriod: 0 };
 
-        const topList = filteredProfessionals.filter(p => p.tier === 'top' && p.tierJoinedAt);
+        const topList = filteredProfessionals.filter(p => isProTier(p.tier) && p.tierJoinedAt);
         const n = topList.length;
 
         if (n <= 1) {
@@ -264,14 +262,13 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
         return { topProfessionals: rotatedOrder.slice(0, 3), rotationPeriod: periodDays };
     }, [filteredProfessionals]);
     
-    const essentialProfessionals = filteredProfessionals.filter(p => p.tier === 'verified' && p.verified);
-    const unverifiedProfessionals = filteredProfessionals.filter(p => p.tier === 'verified' && !p.verified);
+    const listedProfessionals = filteredProfessionals.filter(p => isListedTier(p.tier));
 
     return (
         <div className="flex-1 overflow-y-auto w-full max-w-lg mx-auto px-4 pb-12 animate-in fade-in">
             <header className="py-4">
                  <button onClick={onClose} className="text-purple-600 font-semibold mb-2">&larr; Voltar ao Painel</button>
-                <h1 className="text-3xl font-bold">Rede de Apoio</h1>
+                <h1 className="text-3xl font-bold">Rede de Serviços Profissionais</h1>
                 <p className="text-gray-500">Encontre profissionais perto de você.</p>
             </header>
             
@@ -332,7 +329,7 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
 
                         {/* Top Section */}
                         <section>
-                            <h2 className="text-xl font-bold text-amber-600 border-b-2 border-amber-200 pb-1 mb-3">⭐ Destaques Pro</h2>
+                            <h2 className="text-xl font-bold text-amber-600 border-b-2 border-amber-200 pb-1 mb-3">⭐ Destaques PRO</h2>
                             {rotationPeriod > 0 && <p className="text-[10px] text-gray-500 -mt-2 mb-3">A ordem dos destaques muda a cada {rotationPeriod} dias.</p>}
                             <div className="space-y-3">
                                 {topProfessionals.length > 0 ? (
@@ -343,35 +340,28 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
                             </div>
                         </section>
                         
-                        {/* Verified Section */}
+                        {/* LISTADO Section */}
                         <section>
-                            <h2 className="text-xl font-bold text-green-700 border-b-2 border-green-200 pb-1 mb-3">✅ Essenciais</h2>
+                            <h2 className="text-xl font-bold text-green-700 border-b-2 border-green-200 pb-1 mb-3">✅ Listados</h2>
                              <div className="space-y-3">
-                                {essentialProfessionals.length > 0 ? (
-                                    essentialProfessionals.map(p => <ProfessionalCard key={p.id} professional={p} />)
+                                {listedProfessionals.length > 0 ? (
+                                    listedProfessionals.map(p => <ProfessionalCard key={p.id} professional={p} />)
                                 ) : (
-                                    <p className="text-sm text-gray-500 text-center py-4">Ainda não há profissionais essenciais nesta cidade.</p>
+                                    <p className="text-sm text-gray-500 text-center py-4">Ainda não há profissionais listados nesta cidade.</p>
                                 )}
                             </div>
                         </section>
-
-                        {/* Unverified Section */}
-                        {unverifiedProfessionals.length > 0 && <section>
-                            <h2 className="text-xl font-bold text-gray-600 border-b-2 border-gray-200 pb-1 mb-3">Outros (registro não verificado)</h2>
-                            <div className="space-y-3">
-                                {unverifiedProfessionals.map(p => <ProfessionalCard key={p.id} professional={p} />)}
-                            </div>
-                        </section>}
                     </div>
                 </div>
             )}
             
             <footer className="mt-8 text-center text-xs text-gray-400 space-y-2">
-                <p>O nível "Pro" e "Exclusivo" são espaços patrocinados. O selo "Registro verificado" indica dados de registro conferidos. </p>
-                <p>A Rede de Apoio é um diretório. Não oferecemos diagnóstico nem orientação médica.</p>
+                <p>Os níveis "PRO" e "EXCLUSIVO" são espaços patrocinados. O selo "Registro verificado" indica dados conferidos.</p>
+                <p>A Rede de Serviços Profissionais é um diretório. Não oferecemos diagnóstico nem orientação médica.</p>
             </footer>
         </div>
     );
 };
 
 export default SupportNetworkPage;
+

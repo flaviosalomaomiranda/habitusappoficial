@@ -230,9 +230,9 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({
                 <div>
                   <label className="block text-sm font-semibold text-gray-600 mb-1">Frequencia</label>
                   <div className="grid grid-cols-3 gap-2">
-                    <button type="button" onClick={() => setScheduleType('DAILY')} className={`p-3 rounded-lg border-2 font-semibold ${scheduleType === 'DAILY' ? 'border-blue-500 bg-blue-50' : 'bg-gray-100'}`}>Diario</button>
-                    <button type="button" onClick={() => setScheduleType('WEEKLY')} className={`p-3 rounded-lg border-2 font-semibold ${scheduleType === 'WEEKLY' ? 'border-blue-500 bg-blue-50' : 'bg-gray-100'}`}>Semanal</button>
-                    <button type="button" onClick={() => setScheduleType('MONTHLY')} className={`p-3 rounded-lg border-2 font-semibold ${scheduleType === 'MONTHLY' ? 'border-blue-500 bg-blue-50' : 'bg-gray-100'}`}>Mensal</button>
+                    <button type="button" onClick={() => setScheduleType('DAILY')} className={`p-3 rounded-lg border-2 font-semibold ${scheduleType === 'DAILY' ? 'border-purple-500 bg-purple-50' : 'bg-gray-100'}`}>Diario</button>
+                    <button type="button" onClick={() => setScheduleType('WEEKLY')} className={`p-3 rounded-lg border-2 font-semibold ${scheduleType === 'WEEKLY' ? 'border-purple-500 bg-purple-50' : 'bg-gray-100'}`}>Semanal</button>
+                    <button type="button" onClick={() => setScheduleType('MONTHLY')} className={`p-3 rounded-lg border-2 font-semibold ${scheduleType === 'MONTHLY' ? 'border-purple-500 bg-purple-50' : 'bg-gray-100'}`}>Mensal</button>
                   </div>
                 </div>
                 {scheduleType === 'WEEKLY' && (

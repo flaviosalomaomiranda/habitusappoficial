@@ -91,7 +91,7 @@ const ProgressDashboardModal: React.FC<ProgressDashboardModalProps> = ({ onClose
                                                     {item.reward.imageUrl ? (
                                                         <img src={item.reward.imageUrl} alt={item.reward.name} className="w-10 h-10 object-cover rounded-md" />
                                                     ) : (
-                                                        <Icon className="w-8 h-8 text-cyan-500" />
+                                                        <Icon className="w-8 h-8 text-purple-500" />
                                                     )}
                                                     <div>
                                                         <span className="font-medium">{item.reward.name}</span>
@@ -116,7 +116,7 @@ const ProgressDashboardModal: React.FC<ProgressDashboardModalProps> = ({ onClose
                                                     ) : (
                                                         <button 
                                                             onClick={() => toggleRewardDelivery(item.id)}
-                                                            className="bg-blue-500 text-white font-semibold py-1 px-2 rounded-lg hover:bg-blue-600 transition-colors text-xs sm:text-sm"
+                                                            className="bg-purple-600 text-white font-semibold py-1 px-2 rounded-lg hover:bg-purple-700 transition-colors text-xs sm:text-sm"
                                                         >
                                                             Marcar como Entregue
                                                         </button>

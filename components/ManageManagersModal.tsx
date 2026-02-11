@@ -270,7 +270,7 @@ const ManageManagersModal: React.FC<ManageManagersModalProps> = ({ onClose }) =>
           </button>
           <button
             onClick={exportManagersCsv}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold"
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700"
           >
             Exportar CSV
           </button>

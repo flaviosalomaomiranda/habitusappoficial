@@ -18,7 +18,7 @@ const ChildView: React.FC<ChildViewProps> = ({ child, onSwitchToParent }) => {
     const todaysHabits = getHabitsForChildOnDate(child.id, today);
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-400 to-cyan-400 text-white p-4 sm:p-8 flex flex-col">
+        <div className="min-h-screen bg-gradient-to-br from-purple-500 to-violet-600 text-white p-4 sm:p-8 flex flex-col">
             <header className="flex justify-between items-center mb-8">
                 <div className="flex items-center gap-4">
                     <span className="text-6xl">{child.avatar}</span>
@@ -62,7 +62,7 @@ const ChildView: React.FC<ChildViewProps> = ({ child, onSwitchToParent }) => {
                                 ) : (
                                     <button
                                         onClick={() => requestHabitCompletion(child.id, habit.id, today)}
-                                        className="px-8 py-3 bg-white text-blue-600 font-bold text-2xl rounded-full shadow-lg transition-transform transform hover:scale-105"
+                                        className="px-8 py-3 bg-white text-purple-700 font-bold text-2xl rounded-full shadow-lg transition-transform transform hover:scale-105"
                                     >
                                         Feito!
                                     </button>

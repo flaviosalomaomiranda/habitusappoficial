@@ -103,6 +103,7 @@ export interface AppSettings {
     pin: string | null;
     adminPin?: string | null;
     familyLocation?: FamilyLocation;
+    defaultMasterProfessionalId?: string | null;
 }
 
 export type BillingCycle = "monthly" | "annual";
@@ -149,6 +150,12 @@ export interface ProfessionalContact {
     websiteUrl?: string;
     bookingUrl?: string;
     otherLinks?: string[];
+}
+
+export interface ExclusiveRoutineTemplate {
+  id: string;
+  name: string;
+  diamonds: number;
 }
 
 export type ProfessionalTier = "verified" | "top" | "exclusive" | "master";
@@ -204,6 +211,7 @@ export interface Professional {
   headline?: string;
   highlights?: string[];
   galleryUrls?: string[];
+  exclusiveRoutines?: ExclusiveRoutineTemplate[];
 }
 
 export interface Manager {

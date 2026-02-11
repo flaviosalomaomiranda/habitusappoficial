@@ -8,6 +8,8 @@ interface AddChildModalProps {
   onClose: () => void;
 }
 
+const MAX_CHILD_NAME_LENGTH = 12;
+
 const AddChildModal: React.FC<AddChildModalProps> = ({ onClose }) => {
   const { addChild } = useAppContext();
   const [name, setName] = useState('');
@@ -33,11 +35,13 @@ const AddChildModal: React.FC<AddChildModalProps> = ({ onClose }) => {
               id="child-name"
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setName(e.target.value.slice(0, MAX_CHILD_NAME_LENGTH))}
               className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
               placeholder="Ex: Mia"
+              maxLength={MAX_CHILD_NAME_LENGTH}
               required
             />
+            <p className="mt-1 text-xs text-gray-500">{name.length}/{MAX_CHILD_NAME_LENGTH} caracteres</p>
           </div>
 
           <div className="mb-4">

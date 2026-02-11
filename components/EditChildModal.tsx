@@ -10,6 +10,8 @@ interface EditChildModalProps {
   onClose: () => void;
 }
 
+const MAX_CHILD_NAME_LENGTH = 12;
+
 const EditChildModal: React.FC<EditChildModalProps> = ({ child, onClose }) => {
   const { updateChild, deleteChild, resetChildStars } = useAppContext();
   const [name, setName] = useState(child.name);
@@ -49,11 +51,13 @@ const EditChildModal: React.FC<EditChildModalProps> = ({ child, onClose }) => {
               id="child-name"
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setName(e.target.value.slice(0, MAX_CHILD_NAME_LENGTH))}
               className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
               placeholder="Ex: Mia"
+              maxLength={MAX_CHILD_NAME_LENGTH}
               required
             />
+            <p className="mt-1 text-xs text-gray-500">{name.length}/{MAX_CHILD_NAME_LENGTH} caracteres</p>
           </div>
 
           <div>
@@ -96,7 +100,7 @@ const EditChildModal: React.FC<EditChildModalProps> = ({ child, onClose }) => {
                <button type="button" onClick={handleDelete} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
                   Excluir Pessoa
                </button>
-               <button type="button" onClick={handleResetStars} className="px-4 py-2 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200">
+               <button type="button" onClick={handleResetStars} className="px-4 py-2 bg-purple-100 text-purple-800 rounded-lg hover:bg-purple-200">
                   Zerar pontuacao
                </button>
             </div>

@@ -5,6 +5,7 @@ import App from './App';
 // ✅ ADICIONE ESTES IMPORTS (ajuste o caminho se necessário)
 import { AppProvider } from './context/AppContext';
 import AuthGate from './components/AuthGate';
+import { FeedbackProvider } from './context/FeedbackContext';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -14,10 +15,12 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <AppProvider>
-      <AuthGate>
-        <App />
-      </AuthGate>
-    </AppProvider>
+    <FeedbackProvider>
+      <AppProvider>
+        <AuthGate>
+          <App />
+        </AuthGate>
+      </AppProvider>
+    </FeedbackProvider>
   </React.StrictMode>
 );

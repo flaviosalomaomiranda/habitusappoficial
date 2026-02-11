@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { ProfessionalTier, SupportNetworkPricing } from "../types";
 
@@ -7,7 +7,7 @@ interface ManageSupportNetworkPricingModalProps {
 }
 
 const tierLabels: Record<ProfessionalTier, string> = {
-  verified: "Essencial",
+  verified: "Listado",
   top: "Pro (Rodízio)",
   exclusive: "Exclusivo (1 por Especialidade)",
   master: "Master (1 por Cidade)",
@@ -21,13 +21,32 @@ const emptyPlans: SupportNetworkPricing["plans"] = {
 };
 
 const ManageSupportNetworkPricingModal: React.FC<ManageSupportNetworkPricingModalProps> = ({ onClose }) => {
-  const { supportNetworkPricing, updateSupportNetworkPricing } = useAppContext();
+  const {
+    supportNetworkPricing,
+    updateSupportNetworkPricing,
+    supportNetworkProfessionals,
+    settings,
+    setDefaultMasterProfessionalId,
+  } = useAppContext();
   const [plans, setPlans] = useState<SupportNetworkPricing["plans"]>(supportNetworkPricing?.plans || emptyPlans);
+  const [defaultMasterProfessionalId, setDefaultMasterProfessionalIdState] = useState<string>(
+    settings.defaultMasterProfessionalId ?? ""
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setPlans(supportNetworkPricing?.plans || emptyPlans);
   }, [supportNetworkPricing]);
+
+  useEffect(() => {
+    setDefaultMasterProfessionalIdState(settings.defaultMasterProfessionalId ?? "");
+  }, [settings.defaultMasterProfessionalId]);
+
+  const defaultMasterOptions = useMemo(() => {
+    return supportNetworkProfessionals
+      .filter((p) => p.isActive !== false)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [supportNetworkProfessionals]);
 
   const handleChange = (tier: ProfessionalTier, field: "monthly" | "annual", value: string) => {
     const numeric = value === "" ? 0 : Number(value);
@@ -41,6 +60,7 @@ const ManageSupportNetworkPricingModal: React.FC<ManageSupportNetworkPricingModa
     setIsSaving(true);
     try {
       await updateSupportNetworkPricing(plans);
+      await setDefaultMasterProfessionalId(defaultMasterProfessionalId || null);
       alert("Precificação atualizada.");
       onClose();
     } catch (err) {
@@ -60,6 +80,21 @@ const ManageSupportNetworkPricingModal: React.FC<ManageSupportNetworkPricingModa
 
         <div className="text-sm text-gray-600 mb-4">
           Esses valores ficam disponíveis apenas para Admin e são usados para preencher automaticamente as fichas de profissionais.
+        </div>
+        <div className="mb-4">
+          <label className="block text-sm font-semibold text-gray-700 mb-2">MASTER default (quando não houver MASTER ativo)</label>
+          <select
+            value={defaultMasterProfessionalId}
+            onChange={(e) => setDefaultMasterProfessionalIdState(e.target.value)}
+            className="w-full p-2 border rounded"
+          >
+            <option value="">Sem MASTER default</option>
+            {defaultMasterOptions.map((prof) => (
+              <option key={prof.id} value={prof.id}>
+                {prof.name} - {prof.city}/{prof.uf}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
           Observação: o plano Master é válido por 14 dias. O valor informado é referente a 14 dias. No pacote anual, o total corresponde a 20x o valor praticado.

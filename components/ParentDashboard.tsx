@@ -9,7 +9,7 @@ import { useAppContext } from '../context/AppContext';
 
 
 import { Child, Professional } from '../types';
-import { PlusIcon, UserCircleIcon, PencilIcon, ClipboardListIcon, StarsIcon, ChartBarIcon, ShoppingBagIcon, TrashIcon, XCircleIcon, CheckCircleIcon, MenuIcon, UserIcon, GiftIcon, UsersIcon, MapPinIcon, HeartIcon } from './icons/MiscIcons';
+import { PlusIcon, UserCircleIcon, PencilIcon, ClipboardListIcon, StarsIcon, ChartBarIcon, TrashIcon, XCircleIcon, CheckCircleIcon, MenuIcon, UserIcon, GiftIcon, UsersIcon, MapPinIcon, HeartIcon, TvIcon } from './icons/MiscIcons';
 import AddChildModal from './AddChildModal';
 import EditChildModal from './EditChildModal';
 import AddHabitModal from './AddHabitModal';
@@ -37,10 +37,10 @@ type DeletionInfo = {
     date: string;
 }
 
-type ParentView = 'dashboard' | 'recommendations' | 'supportNetwork' | 'adminSupportNetwork' | 'adminRecommendations' | 'adminSupportNetworkPricing';
+type ParentView = 'dashboard' | 'recommendations' | 'supportNetwork' | 'favorites' | 'adminSupportNetwork' | 'adminRecommendations' | 'adminSupportNetworkPricing';
 
 interface ParentDashboardProps {
-    onEnterChildMode: (child: Child) => void;
+    onEnterTvMode: () => void;
 }
 
 const getSpecialtiesLabel = (prof: Professional) => {
@@ -72,7 +72,7 @@ const buildWhatsAppLink = (phone: string, message: string) => {
 // Card para profissionais Master ou Exclusivo na Home (Versão Fixa e Compacta)
 const SupportSpotlightCard: React.FC<{ 
     prof: Professional, 
-    type: 'master' | 'exclusive', 
+    type: 'master' | 'pro' | 'exclusive', 
     onOpenNetwork: () => void,
     isCollapsed: boolean,
     onToggle: () => void,
@@ -146,7 +146,7 @@ const SupportSpotlightCard: React.FC<{
                                 href={prof.contacts.instagram}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex-1 min-w-[120px] text-center font-bold text-xs sm:text-sm py-2 rounded-lg bg-pink-500/80 text-white hover:bg-pink-500"
+                                className="flex-1 min-w-[120px] text-center font-bold text-xs sm:text-sm py-2 rounded-lg bg-purple-500 text-white hover:bg-purple-600"
                             >
                                 Instagram
                             </a>
@@ -161,14 +161,22 @@ const SupportSpotlightCard: React.FC<{
         <div 
             onClick={collapsible ? onToggle : undefined}
             className={`p-3 rounded-xl border shadow-sm relative overflow-hidden transition-all ${collapsible ? 'cursor-pointer' : ''} ${
-                type === 'master' ? 'bg-gradient-to-r from-purple-600 to-indigo-700 text-white border-indigo-400' : 'bg-white border-amber-200'
+                type === 'master'
+                    ? 'bg-gradient-to-r from-purple-600 to-violet-700 text-white border-violet-400'
+                    : type === 'pro'
+                        ? 'bg-gradient-to-r from-purple-500 to-purple-700 text-white border-purple-400'
+                        : 'bg-white border-purple-200'
             }`}
         >
             {/* Badge de Nível */}
             <div className={`absolute top-0 right-0 px-2 py-0.5 text-[8px] font-black uppercase tracking-tight rounded-bl-lg ${
-                type === 'master' ? 'bg-yellow-400 text-purple-900' : 'bg-amber-100 text-amber-800'
+                type === 'master'
+                    ? 'bg-yellow-400 text-purple-900'
+                    : type === 'pro'
+                        ? 'bg-white/20 text-white'
+                        : 'bg-purple-100 text-purple-800'
             }`}>
-                {type === 'master' ? 'MASTER' : 'EXCLUSIVO'}
+                {type === 'master' ? 'MASTER' : type === 'pro' ? 'PRO' : 'EXCLUSIVO'}
             </div>
             
             <div className="flex gap-3 items-center">
@@ -179,12 +187,12 @@ const SupportSpotlightCard: React.FC<{
                 />
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                        <h4 className={`font-bold truncate ${isCollapsed ? 'text-sm' : 'text-base'} ${type === 'master' ? 'text-white' : 'text-gray-800'}`}>
+                        <h4 className={`font-bold truncate ${isCollapsed ? 'text-sm' : 'text-base'} ${type === 'master' || type === 'pro' ? 'text-white' : 'text-gray-800'}`}>
                             {prof.name}
                         </h4>
                         <span className={`text-[10px] opacity-70 truncate`}>• {getSpecialtiesLabel(prof)}</span>
                     </div>
-                    <p className={`text-[9px] flex items-center gap-1 ${type === 'master' ? 'text-purple-200' : 'text-gray-400'}`}>
+                    <p className={`text-[9px] flex items-center gap-1 ${type === 'master' || type === 'pro' ? 'text-purple-200' : 'text-gray-400'}`}>
                         <MapPinIcon className="w-2.5 h-2.5"/> {prof.city} - {prof.uf}
                     </p>
                 </div>
@@ -201,7 +209,7 @@ const SupportSpotlightCard: React.FC<{
             {!isCollapsed && (
                 <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-300">
                     {prof.headline && (
-                        <p className={`text-xs italic mb-3 px-2 py-1.5 rounded-lg ${type === 'master' ? 'bg-white/10 text-purple-50' : 'bg-gray-50 text-gray-600'}`}>
+                        <p className={`text-xs italic mb-3 px-2 py-1.5 rounded-lg ${type === 'master' || type === 'pro' ? 'bg-white/10 text-purple-50' : 'bg-gray-50 text-gray-600'}`}>
                             "{prof.headline}"
                         </p>
                     )}
@@ -212,16 +220,37 @@ const SupportSpotlightCard: React.FC<{
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className={`flex-1 text-center font-bold text-[11px] py-2 rounded-lg transition-all ${
-                                    type === 'master' ? 'bg-yellow-400 text-purple-900 hover:bg-yellow-300' : 'bg-purple-600 text-white hover:bg-purple-700'
+                                    type === 'master'
+                                        ? 'bg-yellow-400 text-purple-900 hover:bg-yellow-300'
+                                        : type === 'pro'
+                                            ? 'bg-white text-purple-700 hover:bg-purple-50'
+                                            : 'bg-purple-600 text-white hover:bg-purple-700'
                                 }`}
                             >
-                                Agendar consulta
+                                Entrar em contato
                             </a>
+                        )}
+                        {prof.contacts.maps && (
+                            <a
+                                href={prof.contacts.maps}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`px-3 flex items-center justify-center rounded-lg border ${
+                                    type === 'master' || type === 'pro' ? 'border-white/30 text-white hover:bg-white/10' : 'border-gray-200 bg-gray-50 text-gray-700'
+                                }`}
+                            >
+                                <span className="text-[9px] font-bold uppercase">Localização</span>
+                            </a>
+                        )}
+                        {type === "exclusive" && (
+                            <button type="button" className="px-3 flex items-center justify-center rounded-lg border border-purple-200 bg-purple-50 text-purple-700">
+                                <span className="text-[9px] font-bold uppercase">Rotinas</span>
+                            </button>
                         )}
                         
                         {prof.videoUrl && (
                             <a href={prof.videoUrl} target="_blank" rel="noopener noreferrer" className={`px-3 flex items-center justify-center rounded-lg border ${
-                                type === 'master' ? 'border-white/30 text-white hover:bg-white/10' : 'border-red-100 bg-red-50 text-red-600'
+                                type === 'master' || type === 'pro' ? 'border-white/30 text-white hover:bg-white/10' : 'border-red-100 bg-red-50 text-red-600'
                             }`}>
                                <span className="text-[9px] font-bold uppercase">Vídeos</span>
                             </a>
@@ -240,7 +269,7 @@ const SupportSpotlightCard: React.FC<{
                             rel="noopener noreferrer"
                             className={`flex-1 text-center font-bold text-[10px] py-1 rounded-md bg-green-500 text-white`}
                         >
-                            Agendar consulta
+                            Entrar em contato
                         </a>
                     )}
                     <button onClick={onOpenNetwork} className={`px-2 py-1 text-[10px] font-bold rounded-md border ${type === 'master' ? 'border-white/30 text-white' : 'border-gray-200 text-gray-500'}`}>
@@ -254,7 +283,7 @@ const SupportSpotlightCard: React.FC<{
 
 // Card compacto para profissionais favoritados
 const SupportFavoriteTopCard: React.FC<{ prof: Professional; onToggleFavorite: (id: string) => void }> = ({ prof, onToggleFavorite }) => (
-    <div className="bg-gradient-to-br from-amber-50 to-white p-3 rounded-xl border border-amber-300 shadow-sm space-y-2 relative h-full flex flex-col min-h-[200px] sm:min-h-[220px]">
+    <div className="bg-gradient-to-br from-purple-50 to-white p-3 rounded-xl border border-purple-300 shadow-sm space-y-2 relative h-full flex flex-col min-h-[200px] sm:min-h-[220px]">
         <div className="flex items-start gap-3">
             <img
                 src={prof.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(prof.name)}&background=random`}
@@ -279,7 +308,7 @@ const SupportFavoriteTopCard: React.FC<{ prof: Professional; onToggleFavorite: (
         </div>
 
         {prof.headline && (
-            <p className="text-xs text-gray-700 bg-amber-100/60 rounded-md px-2 py-1 line-clamp-2">
+            <p className="text-xs text-gray-700 bg-purple-100/70 rounded-md px-2 py-1 line-clamp-2">
                 {prof.headline}
             </p>
         )}
@@ -292,7 +321,7 @@ const SupportFavoriteTopCard: React.FC<{ prof: Professional; onToggleFavorite: (
                             key={`${prof.id}-top-g-${idx}`}
                             src={url}
                             alt={`${prof.name} destaque ${idx + 1}`}
-                            className="w-12 h-9 sm:w-14 sm:h-10 rounded-lg object-cover border border-amber-200 flex-shrink-0"
+                            className="w-12 h-9 sm:w-14 sm:h-10 rounded-lg object-cover border border-purple-200 flex-shrink-0"
                         />
                     ))}
                 </div>
@@ -300,7 +329,7 @@ const SupportFavoriteTopCard: React.FC<{ prof: Professional; onToggleFavorite: (
                     {prof.galleryUrls.slice(0, 4).map((_, idx) => (
                         <span
                             key={`${prof.id}-top-dot-${idx}`}
-                            className={`h-1.5 w-1.5 rounded-full ${idx === 0 ? 'bg-amber-500' : 'bg-amber-200'}`}
+                            className={`h-1.5 w-1.5 rounded-full ${idx === 0 ? 'bg-purple-500' : 'bg-purple-200'}`}
                         />
                     ))}
                 </div>
@@ -310,7 +339,7 @@ const SupportFavoriteTopCard: React.FC<{ prof: Professional; onToggleFavorite: (
         {prof.highlights && prof.highlights.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
                 {prof.highlights.slice(0, 3).map((item, idx) => (
-                    <span key={`${prof.id}-top-h-${idx}`} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                    <span key={`${prof.id}-top-h-${idx}`} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
                         {item}
                     </span>
                 ))}
@@ -325,13 +354,13 @@ const SupportFavoriteTopCard: React.FC<{ prof: Professional; onToggleFavorite: (
                     rel="noopener noreferrer"
                     className="flex-1 text-center bg-purple-600 text-white font-bold text-xs py-1.5 px-3 rounded-lg hover:bg-purple-700 transition-colors whitespace-nowrap"
                 >
-                    Agendar consulta
+                    Entrar em contato
                 </a>
             )}
             {prof.contacts.phone && (
                 <a
                     href={`tel:${prof.contacts.phone}`}
-                    className="flex-1 text-center bg-blue-100 text-blue-700 font-bold text-xs py-1.5 px-3 rounded-lg hover:bg-blue-200 transition-colors whitespace-nowrap"
+                    className="flex-1 text-center bg-purple-100 text-purple-700 font-bold text-xs py-1.5 px-3 rounded-lg hover:bg-purple-200 transition-colors whitespace-nowrap"
                 >
                     Ligar
                 </a>
@@ -425,13 +454,13 @@ const SupportFavoriteVerifiedCard: React.FC<{ prof: Professional; onToggleFavori
                     rel="noopener noreferrer"
                     className="flex-1 text-center bg-green-100 text-green-800 font-bold text-xs py-1.5 px-3 rounded-lg hover:bg-green-200 whitespace-nowrap"
                 >
-                    Agendar consulta
+                    Entrar em contato
                 </a>
             )}
             {prof.contacts.phone && (
                 <a
                     href={`tel:${prof.contacts.phone}`}
-                    className="flex-1 text-center bg-blue-100 text-blue-700 font-bold text-xs py-1.5 px-3 rounded-lg hover:bg-blue-200 transition-colors whitespace-nowrap"
+                    className="flex-1 text-center bg-purple-100 text-purple-700 font-bold text-xs py-1.5 px-3 rounded-lg hover:bg-purple-200 transition-colors whitespace-nowrap"
                 >
                     Ligar
                 </a>
@@ -451,7 +480,7 @@ const SupportFavoriteVerifiedCard: React.FC<{ prof: Professional; onToggleFavori
 );
 
 
-const ParentDashboard: React.FC<ParentDashboardProps> = ({ onEnterChildMode }) => {
+const ParentDashboard: React.FC<ParentDashboardProps> = ({ onEnterTvMode }) => {
   const { settings, children, deleteHabit, skipHabitForDate, getHabitsForChildOnDate, toggleHabitCompletion, rejectHabitCompletion, redeemedRewards, toggleRewardDelivery, getFavoriteProfessionals, toggleFavoriteProfessional, supportNetworkProfessionals, activeSupportNetworkProfessionals, isFamilyOwner, canManageMembers, canEditChildren, canEditHabits, canMarkHabits, isManager } = useAppContext();
 
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
@@ -499,110 +528,43 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
     // Filtros de Cidade Atual da Família (REATIVO)
     const familyLocation = settings.familyLocation;
 
-    const completedHabitNamesToday = useMemo(() => {
-        if (children.length === 0) return [];
-        const names: string[] = [];
-        children.forEach((child) => {
-            const habits = getHabitsForChildOnDate(child.id, todayStr);
-            habits.forEach((habit) => {
-                if (habit.completions[todayStr] === "COMPLETED") {
-                    names.push(habit.name.toLowerCase());
-                }
-            });
-        });
-        return names;
-    }, [children, getHabitsForChildOnDate, todayStr]);
-    
     const masterProfessional = useMemo(() => {
-        if (!familyLocation?.cityId) return null;
-        return activeSupportNetworkProfessionals.find(p => p.tier === 'master' && p.cityId === familyLocation.cityId);
+        const activeCityMaster = familyLocation?.cityId
+            ? activeSupportNetworkProfessionals.find((p) => p.tier === 'master' && p.cityId === familyLocation.cityId)
+            : null;
+        if (activeCityMaster) return activeCityMaster;
+
+        const defaultMasterId = settings.defaultMasterProfessionalId;
+        if (!defaultMasterId) return null;
+
+        const fallback = supportNetworkProfessionals.find(
+            (p) => p.id === defaultMasterId && p.isActive !== false
+        );
+        return fallback ?? null;
+    }, [activeSupportNetworkProfessionals, familyLocation, settings.defaultMasterProfessionalId, supportNetworkProfessionals]);
+
+    const cityProProfessionals = useMemo(() => {
+        return activeSupportNetworkProfessionals
+            .filter((p) => {
+                const isPro = p.tier === "top" || p.tier === "pro";
+                if (!isPro) return false;
+                if (!familyLocation?.cityId) return true;
+                return p.cityId === familyLocation.cityId;
+            })
+            .sort((a, b) => (a.tierJoinedAt || "").localeCompare(b.tierJoinedAt || "") || a.name.localeCompare(b.name));
     }, [activeSupportNetworkProfessionals, familyLocation]);
 
-    const spotlightStorageKey = familyLocation?.cityId
-        ? `exclusiveSpotlight:${familyLocation.cityId}`
-        : "exclusiveSpotlight:global";
-
-    const getExclusiveSpotlightCounts = () => {
-        if (typeof window === "undefined") return { date: todayStr, counts: {} as Record<string, number> };
-        try {
-            const raw = localStorage.getItem(spotlightStorageKey);
-            const parsed = raw ? JSON.parse(raw) : null;
-            if (!parsed || parsed.date !== todayStr) {
-                return { date: todayStr, counts: {} as Record<string, number> };
-            }
-            return parsed as { date: string; counts: Record<string, number> };
-        } catch {
-            return { date: todayStr, counts: {} as Record<string, number> };
-        }
-    };
-
-    const getExclusiveSpotlightCount = (professionalId: string) => {
-        const data = getExclusiveSpotlightCounts();
-        return data.counts[professionalId] || 0;
-    };
-
-    const incrementExclusiveSpotlightCount = (professionalId: string) => {
-        if (typeof window === "undefined") return;
-        const data = getExclusiveSpotlightCounts();
-        data.counts[professionalId] = (data.counts[professionalId] || 0) + 1;
-        localStorage.setItem(spotlightStorageKey, JSON.stringify({ date: todayStr, counts: data.counts }));
-    };
-
-    const rotatingPremiumSpotlight = useMemo(() => {
-        if (!familyLocation?.cityId) return null;
-        const exclusives = activeSupportNetworkProfessionals
-            .filter(p => p.tier === 'exclusive' && p.cityId === familyLocation.cityId)
-            .sort((a, b) => (a.tierJoinedAt || '').localeCompare(b.tierJoinedAt || ''));
-
-        const eligibleExclusives = exclusives.filter((professional) => {
-            const keywords = professional.spotlightKeywords || [];
-            if (keywords.length === 0) return false;
-            const hasMatch = completedHabitNamesToday.some((name) =>
-                keywords.some((kw) => name.includes(kw.toLowerCase()))
-            );
-            if (!hasMatch) return false;
-            const limit = professional.spotlightDailyLimit ?? 2;
-            return getExclusiveSpotlightCount(professional.id) < limit;
-        });
-        
-        if (eligibleExclusives.length === 0) return null;
-        if (eligibleExclusives.length === 1) return eligibleExclusives[0];
-
-        const today = new Date();
-        const todayUTC = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-        const anchorDateStr = eligibleExclusives[0].tierJoinedAt || '2024-01-01T00:00:00Z';
-        const anchorDate = new Date(anchorDateStr);
-        const anchorUTC = Date.UTC(anchorDate.getUTCFullYear(), anchorDate.getUTCMonth(), anchorDate.getUTCDate());
-        
-        const diffDays = Math.floor((todayUTC - anchorUTC) / 86400000);
-        const index = Math.max(0, diffDays) % eligibleExclusives.length;
-        
-        return eligibleExclusives[index];
-    }, [activeSupportNetworkProfessionals, completedHabitNamesToday, familyLocation, todayStr, spotlightStorageKey]);
-
-    useEffect(() => {
-        if (!rotatingPremiumSpotlight) return;
-        const key = `${todayStr}:${rotatingPremiumSpotlight.id}`;
-        if (exclusiveSpotlightRef.current === key) return;
-        exclusiveSpotlightRef.current = key;
-        incrementExclusiveSpotlightCount(rotatingPremiumSpotlight.id);
-    }, [rotatingPremiumSpotlight, todayStr]);
+    const cityExclusiveProfessionals = useMemo(() => {
+        return activeSupportNetworkProfessionals
+            .filter((p) => {
+                if (p.tier !== "exclusive") return false;
+                if (!familyLocation?.cityId) return true;
+                return p.cityId === familyLocation.cityId;
+            })
+            .sort((a, b) => (a.tierJoinedAt || "").localeCompare(b.tierJoinedAt || "") || a.name.localeCompare(b.name));
+    }, [activeSupportNetworkProfessionals, familyLocation]);
 
     const favoriteProfessionals = getFavoriteProfessionals();
-
-    const topFavorites = useMemo(() =>
-        favoriteProfessionals
-            .filter(p => p.tier === 'top')
-            .sort((a, b) => a.name.localeCompare(b.name)),
-        [favoriteProfessionals]
-    );
-
-    const verifiedFavorites = useMemo(() =>
-        favoriteProfessionals
-            .filter(p => p.tier === 'verified' && p.verified)
-            .sort((a, b) => a.name.localeCompare(b.name)),
-        [favoriteProfessionals]
-    );
     
     const [currentView, setCurrentView] = useState<ParentView>('dashboard');
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -622,7 +584,14 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
     const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'warning' } | null>(null);
     
     const [viewedDate, setViewedDate] = useState(getTodayDateString());
-    const exclusiveSpotlightRef = useRef<string | null>(null);
+    const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
+    const swipeSessionRef = useRef<{
+        habitId: string;
+        startX: number;
+        startY: number;
+        locked: boolean;
+        isHorizontal: boolean;
+    } | null>(null);
     
     useEffect(() => {
         const currentChildExists = selectedChildId && children.some(c => c.id === selectedChildId);
@@ -664,9 +633,9 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
         const daysUntil = daysUntilNextBirthday(child.birthDate);
         const age = calculateAge(child.birthDate);
         if (daysUntil === 0) {
-            return <div className="text-xs mt-1 px-2.5 py-1 bg-pink-100 text-pink-700 rounded-full font-bold">🎉 Aniversário Hoje! ({age+1} anos)</div>
+            return <span className="text-xs px-2.5 py-1 bg-purple-100 text-purple-700 rounded-full font-bold">🎉 Aniversário Hoje! ({age+1} anos)</span>
         }
-        return <div className="text-[10px] mt-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full">🎂 {daysUntil} dias para {age+1} anos</div>
+        return <span className="text-[10px] px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full">🎂 {daysUntil} dias para {age+1} anos</span>
     }
 
     const getFormattedDateTitle = (dateStr: string) => {
@@ -675,8 +644,63 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
         return new Date(dateStr + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
     };
 
+    const getWeekdayName = (dateStr: string) => {
+        return new Date(dateStr + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long' });
+    };
+
     const habitsForDate = selectedChild ? getHabitsForChildOnDate(selectedChild.id, viewedDate) : [];
     const isFutureDate = viewedDate > getTodayDateString();
+    const isViewingToday = viewedDate === getTodayDateString();
+    const SWIPE_COMPLETE_THRESHOLD = 84;
+    const SWIPE_MAX_OFFSET = 110;
+
+    const beginHabitSwipe = (habitId: string, event: React.TouchEvent<HTMLDivElement>) => {
+        const touch = event.touches[0];
+        if (!touch) return;
+        swipeSessionRef.current = {
+            habitId,
+            startX: touch.clientX,
+            startY: touch.clientY,
+            locked: false,
+            isHorizontal: false,
+        };
+    };
+
+    const moveHabitSwipe = (event: React.TouchEvent<HTMLDivElement>) => {
+        const session = swipeSessionRef.current;
+        if (!session) return;
+        const touch = event.touches[0];
+        if (!touch) return;
+
+        const dx = touch.clientX - session.startX;
+        const dy = touch.clientY - session.startY;
+
+        if (!session.locked) {
+            if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+            session.locked = true;
+            session.isHorizontal = Math.abs(dx) > Math.abs(dy) * 1.15;
+        }
+        if (!session.isHorizontal) return;
+
+        const offset = Math.max(0, Math.min(SWIPE_MAX_OFFSET, dx));
+        if (offset > 0) event.preventDefault();
+        setSwipeOffsets((prev) => (prev[session.habitId] === offset ? prev : { ...prev, [session.habitId]: offset }));
+    };
+
+    const endHabitSwipe = (habitId: string) => {
+        const offset = swipeOffsets[habitId] ?? 0;
+        swipeSessionRef.current = null;
+        setSwipeOffsets((prev) => {
+            if (!(habitId in prev)) return prev;
+            const next = { ...prev };
+            delete next[habitId];
+            return next;
+        });
+        if (!selectedChild || !canMarkHabits || isFutureDate) return;
+        if (offset < SWIPE_COMPLETE_THRESHOLD) return;
+        toggleHabitCompletion(selectedChild.id, habitId, viewedDate);
+        showToast("Hábito marcado como feito.", "success");
+    };
     
     const childRedeemedRewards = useMemo(() => {
         if (!selectedChildId) return [];
@@ -702,14 +726,37 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
         );
     };
 
-    const renderSpotlightSection = () => {
-        if (!rotatingPremiumSpotlight) return null;
+    const getServiceProfessionalForSlot = (slotIndex: number): Professional | null => {
+        const hasPro = cityProProfessionals.length > 0;
+        const hasExclusive = cityExclusiveProfessionals.length > 0;
+        if (!hasPro && !hasExclusive) return null;
+
+        const dayIndex = Math.floor(new Date(todayStr + "T00:00:00").getTime() / 86400000);
+        const preferPro = slotIndex % 2 === 0;
+
+        if (hasPro && hasExclusive) {
+            if (preferPro) {
+                const idx = (Math.floor(slotIndex / 2) + dayIndex) % cityProProfessionals.length;
+                return cityProProfessionals[idx];
+            }
+            const idx = (Math.floor(slotIndex / 2) + dayIndex) % cityExclusiveProfessionals.length;
+            return cityExclusiveProfessionals[idx];
+        }
+
+        const list = hasPro ? cityProProfessionals : cityExclusiveProfessionals;
+        return list[(slotIndex + dayIndex) % list.length];
+    };
+    const servicePoolCount = cityProProfessionals.length + cityExclusiveProfessionals.length;
+
+    const renderServiceSpotlight = (professional: Professional | null, { inline = false }: { inline?: boolean } = {}) => {
+        if (!professional) return null;
+        const cardType = professional.tier === "exclusive" ? "exclusive" : "pro";
         return (
-            <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
+            <div className={`bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-gray-100 ${inline ? "" : "mb-6"}`}>
                 <div className="grid grid-cols-1 gap-4">
                     <SupportSpotlightCard
-                        prof={rotatingPremiumSpotlight}
-                        type="exclusive"
+                        prof={professional}
+                        type={cardType}
                         onOpenNetwork={() => setCurrentView('supportNetwork')}
                         isCollapsed={isPremiumCollapsed}
                         onToggle={() => setIsPremiumCollapsed((prev) => !prev)}
@@ -719,39 +766,22 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
         );
     };
 
-    const renderFavoritesSection = () => (
-        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
+    const renderFavoritesView = () => (
+        <div className="max-w-4xl mx-auto bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold">Rede de Apoio - Favoritos</h3>
-                <button onClick={() => setCurrentView('supportNetwork')} className="text-purple-600 font-bold text-xs">Ver Rede de Apoio &rarr;</button>
+                <h3 className="text-lg font-semibold">Meus Favoritos</h3>
+                <button onClick={() => setCurrentView('supportNetwork')} className="text-purple-600 font-bold text-xs">Ver Rede de Serviços Profissionais &rarr;</button>
             </div>
             {favoriteProfessionals.length > 0 ? (
-                <div className="space-y-4">
-                    {topFavorites.length > 0 && (
-                        <section>
-                            <h4 className="font-bold text-amber-600 text-sm mb-2">⭐ TOP Favoritos</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                            {topFavorites.slice(0, 2).map(prof => (
-                                                                <SupportFavoriteTopCard key={prof.id} prof={prof} onToggleFavorite={toggleFavoriteProfessional} />
-                                                            ))}
-                            </div>
-                        </section>
-                    )}
-                    {verifiedFavorites.length > 0 && (
-                        <section>
-                            <h4 className="font-bold text-green-700 text-sm mb-2">✅ Registro verificado</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                            {verifiedFavorites.slice(0, 2).map(prof => (
-                                                                <SupportFavoriteVerifiedCard key={prof.id} prof={prof} onToggleFavorite={toggleFavoriteProfessional} />
-                                                            ))}
-                            </div>
-                        </section>
-                    )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {favoriteProfessionals.map((prof) => (
+                        <SupportFavoriteTopCard key={prof.id} prof={prof} onToggleFavorite={toggleFavoriteProfessional} />
+                    ))}
                 </div>
             ) : (
                 <div className="text-center py-6">
-                    <p className="text-gray-500 text-sm">Nenhum profissional favorito ainda.</p>
-                    <button onClick={() => setCurrentView('supportNetwork')} className="mt-2 text-purple-600 font-bold text-xs">Encontre e favorite profissionais &rarr;</button>
+                    <p className="text-gray-500 text-sm">Você ainda não tem favoritos.</p>
+                    <button onClick={() => setCurrentView('supportNetwork')} className="mt-2 text-purple-600 font-bold text-xs">Explorar profissionais &rarr;</button>
                 </div>
             )}
         </div>
@@ -761,7 +791,7 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
         <div className="flex flex-col h-full">
             <div className="p-4">
                 <h2 className="text-xl font-bold text-gray-800 mb-2">Acoes Gerais</h2>
-                <p className="text-sm text-gray-500">Gerencie pessoas, habitos e Rede de Apoio.</p>
+                <p className="text-sm text-gray-500">Gerencie pessoas, habitos e Rede de Serviços Profissionais.</p>
             </div>
                 <div className="flex-grow overflow-y-auto px-4 space-y-2 pb-4">
                     {isAdmin && (
@@ -769,53 +799,58 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                             <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Administração</div>
                             <button
                                 onClick={() => { setCurrentView('adminSupportNetwork'); setIsMenuOpen(false); }}
-                                className="w-full flex items-center gap-4 p-3 bg-amber-50 text-amber-800 rounded-xl hover:bg-amber-100 transition-colors font-semibold text-sm"
+                                className="w-full flex items-center gap-4 p-3 bg-purple-50 text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm"
                             >
-                                <UsersIcon className="w-5 h-5 text-amber-500" />
+                                <UsersIcon className="w-5 h-5 text-purple-500" />
                                 Adicionar Profissional
                             </button>
                             <button
                                 onClick={() => { setManageManagersModalOpen(true); setIsMenuOpen(false); }}
-                                className="mt-2 w-full flex items-center gap-4 p-3 bg-amber-50 text-amber-800 rounded-xl hover:bg-amber-100 transition-colors font-semibold text-sm"
+                                className="mt-2 w-full flex items-center gap-4 p-3 bg-purple-50 text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm"
                             >
-                                <UsersIcon className="w-5 h-5 text-amber-500" />
+                                <UsersIcon className="w-5 h-5 text-purple-500" />
                                 Adicionar Gerente
                             </button>
                             <button
                                 onClick={() => { setCurrentView('adminSupportNetworkPricing'); setIsMenuOpen(false); }}
-                                className="mt-2 w-full flex items-center gap-4 p-3 bg-amber-50 text-amber-800 rounded-xl hover:bg-amber-100 transition-colors font-semibold text-sm"
+                                className="mt-2 w-full flex items-center gap-4 p-3 bg-purple-50 text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm"
                             >
-                                <ClipboardListIcon className="w-5 h-5 text-amber-500" />
+                                <ClipboardListIcon className="w-5 h-5 text-purple-500" />
                                 Precificação de Planos
                             </button>
                             <button
                                 onClick={() => { setCurrentView('adminRecommendations'); setIsMenuOpen(false); }}
-                                className="mt-2 w-full flex items-center gap-4 p-3 bg-amber-50 text-amber-800 rounded-xl hover:bg-amber-100 transition-colors font-semibold text-sm"
+                                className="mt-2 w-full flex items-center gap-4 p-3 bg-purple-50 text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm"
                             >
-                                <GiftIcon className="w-5 h-5 text-amber-500" />
+                                <GiftIcon className="w-5 h-5 text-purple-500" />
                                 Gerenciar Shopping
                             </button>
                             <hr className="my-3" />
                         </div>
                     )}
-                {canWriteChildren && !isAdmin && (
-                    <button onClick={() => { setAddChildModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all font-semibold text-sm">
-                        <PlusIcon className="w-5 h-5" /> Adicionar pessoa
-                    </button>
-                )}
                 <button onClick={() => { setManageTemplatesModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><ClipboardListIcon className="w-5 h-5 text-gray-500" /> Modelos de Rotina</button>
                 <button onClick={() => { setProgressModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><ChartBarIcon className="w-5 h-5 text-gray-500" /> Quadro de Progresso</button>
                 <button onClick={() => { setManageRewardsModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><StarsIcon className="w-5 h-5 text-gray-500" /> Gerenciar Recompensas</button>
                 {canManageMembers && (
                     <button onClick={() => { setManageMembersModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><UserIcon className="w-5 h-5 text-gray-500" /> Gerenciar Membros</button>
                 )}
+                <button
+                    onClick={() => {
+                        onEnterTvMode();
+                        setIsMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-4 p-3 bg-purple-50 text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm"
+                >
+                    <TvIcon className="w-5 h-5 text-purple-600" /> Modo TV/Tablet
+                </button>
                 <hr className="my-2"/>
                 <button onClick={() => { setCurrentView('recommendations'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><GiftIcon className="w-5 h-5 text-gray-500" /> Shopping</button>
-                <button onClick={() => { setCurrentView('supportNetwork'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><UsersIcon className="w-5 h-5 text-gray-500" /> Rede de Apoio</button>
+                <button onClick={() => { setCurrentView('supportNetwork'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><UsersIcon className="w-5 h-5 text-gray-500" /> Rede de Serviços Profissionais</button>
+                <button onClick={() => { setCurrentView('favorites'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><HeartIcon className="w-5 h-5 text-gray-500" /> Meus Favoritos</button>
                 {isManager && !isAdmin && (
                     <div className="pt-2 mt-2 border-t">
                         <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Gerente</div>
-                        <button onClick={() => { setCurrentView('adminSupportNetwork'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-amber-50 text-amber-800 rounded-xl hover:bg-amber-100 transition-colors font-semibold text-sm"><UsersIcon className="w-5 h-5 text-amber-500" /> Inserir Profissionais</button>
+                        <button onClick={() => { setCurrentView('adminSupportNetwork'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-purple-50 text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm"><UsersIcon className="w-5 h-5 text-purple-500" /> Inserir Profissionais</button>
                     </div>
                 )}
             </div>
@@ -855,6 +890,12 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                 return <ProductsRecommendations onClose={() => setCurrentView('dashboard')} />;
             case 'supportNetwork':
                 return <SupportNetworkPage onClose={() => setCurrentView('dashboard')} />;
+            case 'favorites':
+                return (
+                    <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24">
+                        {renderFavoritesView()}
+                    </div>
+                );
             case "adminSupportNetwork":
                 if (!isAdmin && !isManager) return <div className="p-6 text-sm text-gray-500">Sem permissão.</div>;
                 return <ManageSupportNetworkModal onClose={() => setCurrentView("dashboard")} />;
@@ -878,33 +919,53 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
 
                         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 pb-28 custom-scrollbar">
                             {masterProfessional && (
-                                <div className="mb-2">
-                                    {renderMasterBanner()}
-                                </div>
+                                <>
+                                    <div className="md:hidden sticky top-0 z-30 -mx-4 px-4 pt-1 pb-2 bg-gray-50/95 backdrop-blur-sm border-b border-gray-100">
+                                        {renderMasterBanner()}
+                                    </div>
+                                    <div className="hidden md:block mb-2">
+                                        {renderMasterBanner()}
+                                    </div>
+                                </>
                             )}
                             {children.length > 0 && (
                                 <div className="md:hidden -mt-2 mb-3">
-                                    <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                                    <div className="relative">
+                                        <div className="pointer-events-none absolute left-0 top-0 z-20 h-full w-8 bg-gradient-to-r from-white to-transparent" />
+                                        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                                        {canWriteChildren && !isAdmin && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setAddChildModalOpen(true)}
+                                                className="sticky left-0 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-purple-200 bg-purple-50 text-purple-700 text-[11px] font-bold whitespace-nowrap shadow-sm"
+                                                aria-label="Adicionar pessoa"
+                                                title="Adicionar pessoa"
+                                            >
+                                                <UsersIcon className="w-4 h-4" />
+                                                <PlusIcon className="w-3.5 h-3.5" />
+                                            </button>
+                                        )}
                                         {children.map((child) => (
                                             <button
                                                 key={child.id}
                                                 onClick={() => handleSelectChild(child)}
-                                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold whitespace-nowrap ${
+                                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[11px] font-semibold whitespace-nowrap ${
                                                     selectedChildId === child.id
                                                         ? "bg-purple-600 text-white border-purple-600"
                                                         : "bg-white text-gray-600 border-gray-200"
                                                 }`}
                                             >
                                                 <span>{child.avatar}</span>
-                                                <span className="max-w-[120px] truncate">{child.name}</span>
+                                                <span className="max-w-[90px] truncate">{child.name}</span>
                                             </button>
                                         ))}
+                                    </div>
                                     </div>
                                 </div>
                             )}
                             {selectedChild ? (
                                 <div className="max-w-4xl mx-auto">
-                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
                                         <div
                                             role="button"
                                             tabIndex={0}
@@ -914,64 +975,63 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                     setCurrentView("dashboard");
                                                 }
                                             }}
-                                            className="flex items-center gap-4 text-left cursor-pointer"
+                                            className="flex items-start sm:items-center gap-3 sm:gap-4 text-left cursor-pointer w-full min-w-0"
                                             aria-label="Voltar para o quadro de tarefas"
                                         >
                                             <div className="relative group">
-                                                <span className="text-5xl sm:text-6xl">{selectedChild.avatar}</span>
+                                                <span className="text-4xl sm:text-6xl">{selectedChild.avatar}</span>
                                                 {canWriteChildren && (
                                                     <button onClick={(event) => { event.stopPropagation(); setEditingChild(selectedChild); }} className="absolute -bottom-1 -right-1 p-1.5 bg-white shadow-md rounded-full text-gray-400 hover:text-purple-600 md:opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <PencilIcon className="w-4 h-4" />
                                                     </button>
                                                 )}
                                             </div>
-                                            <div>
-                                                <h2 className="text-2xl sm:text-3xl font-bold flex items-center gap-3">
-                                                    <span className="flex items-center gap-2">
-                                                        {selectedChild.name}
-                                                        <span className="hidden sm:inline-flex items-center gap-1 text-xs font-semibold text-purple-600 bg-purple-50 px-2 py-1 rounded-full">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7 7-7M3 12h18" />
-                                                            </svg>
-                                                            Quadro
-                                                        </span>
+                                            <div className="min-w-0">
+                                                <h2 className="text-xl sm:text-3xl font-bold flex items-center gap-1.5 sm:gap-3 flex-wrap">
+                                                    <span className="flex items-center gap-2 min-w-0">
+                                                        <span className="truncate max-w-[180px] sm:max-w-none">{selectedChild.name}</span>
                                                     </span>
                                                     {selectedChild.birthDate && selectedChild.showAgeInfo && (
-                                                        <span className="text-gray-400 text-lg font-medium">{calculateAge(selectedChild.birthDate)} anos</span>
+                                                        <span className="text-gray-400 text-base sm:text-lg font-medium">{calculateAge(selectedChild.birthDate)} anos</span>
                                                     )}
+                                                    {renderBirthdayInfo(selectedChild)}
                                                 </h2>
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex items-center gap-1.5 text-yellow-500 font-bold bg-yellow-50 px-3 py-1 rounded-full">
+                                                <div className="mt-1 flex flex-wrap items-center gap-2 sm:gap-3">
+                                                    <div className="flex items-center gap-1.5 text-yellow-500 font-bold bg-yellow-50 px-2.5 py-1 rounded-full text-sm sm:text-base">
                                                         <StarIcon className="w-5 h-5" /> <span>{selectedChild.stars}</span>
                                                     </div>
-                                                    {renderBirthdayInfo(selectedChild)}
+                                                    <button
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            setRewardShopOpen(true);
+                                                        }}
+                                                        className="inline-flex items-center justify-center h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-white text-purple-700 border border-purple-200 hover:bg-purple-50 transition-colors shadow-lg shadow-purple-500/20"
+                                                        aria-label={`Abrir recompensas de ${selectedChild.name}`}
+                                                        title="Recompensas"
+                                                    >
+                                                        <GiftIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                    </button>
                                                 </div>
                                             </div>
-                                        </div>
-                                        <div className="grid grid-cols-2 w-full sm:w-auto gap-3">
-                                            <button onClick={() => onEnterChildMode(selectedChild)} className="h-12 flex-1 sm:flex-none bg-blue-500 text-white font-bold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 hover:bg-blue-600 transition-all text-sm active:scale-95">
-                                                <UserIcon className="w-5 h-5" /> Modo Foco
-                                            </button>
-                                            <button onClick={() => setRewardShopOpen(true)} className="h-12 flex-1 sm:flex-none bg-cyan-500 text-white font-bold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 hover:bg-cyan-600 transition-all shadow-lg shadow-cyan-500/20 text-sm active:scale-95">
-                                                <ShoppingBagIcon className="w-5 h-5" /> Recompensas
-                                            </button>
                                         </div>
                                     </div>
 
                                     <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
-                                        <div className="flex justify-between items-center mb-5">
-                                            <h3 className="text-lg font-semibold">Hábitos de {getFormattedDateTitle(viewedDate)}</h3>
-                                            <div className="flex items-center gap-3">
-                                                <input type="date" value={viewedDate} onChange={(e) => setViewedDate(e.target.value)} className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 h-9" />
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-5">
+                                            <h3 className="text-base sm:text-lg font-semibold">
+                                                {isViewingToday ? "Rotinas de Hoje" : `Rotinas de ${getFormattedDateTitle(viewedDate)}`} ({getWeekdayName(viewedDate)})
+                                            </h3>
+                                            <div className="w-full sm:w-auto flex items-center gap-2 sm:gap-3">
+                                                <input type="date" value={viewedDate} onChange={(e) => setViewedDate(e.target.value)} className="w-full sm:w-auto text-sm px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 h-10" />
                                                 {canWriteHabits && (
-                                                    <button onClick={() => setAddHabitModalOpen(true)} className="flex-shrink-0 flex items-center justify-center gap-2 h-9 w-9 sm:w-auto sm:px-4 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-all active:scale-95" aria-label="Adicionar novo hábito">
+                                                    <button onClick={() => setAddHabitModalOpen(true)} className="flex-shrink-0 flex items-center justify-center gap-2 h-10 w-10 sm:w-auto sm:px-4 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-all active:scale-95" aria-label="Adicionar novo hábito">
                                                         <PlusIcon className="w-5 h-5" />
                                                         <span className="hidden sm:inline text-sm font-bold">Hábito</span>
                                                     </button>
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
                                             {habitsForDate.map((habit, index) => {
                                                 const Icon = HABIT_ICONS[habit.icon];
                                                 const status = habit.completions[viewedDate];
@@ -985,56 +1045,106 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                     : isPending
                                                     ? 'bg-white text-yellow-500'
                                                     : `${categoryStyle?.iconBg ?? 'bg-white'} ${categoryStyle?.icon ?? 'text-purple-500'}`;
-                                                const showSupportOnMobile = index === 3;
+                                                const canSwipeToComplete = canMarkHabits && !isFutureDate && !isCompleted && !isPending;
+                                                const swipeOffset = swipeOffsets[habit.id] ?? 0;
+                                                const swipeProgress = Math.min(1, swipeOffset / SWIPE_COMPLETE_THRESHOLD);
+
+                                                // Mobile: 1 bloco profissional a cada 3 rotinas
+                                                const supportInsertionIndex = Math.floor(index / 3);
+                                                const shouldInsertSupportMobile = (index + 1) % 3 === 0;
+                                                const supportProfessionalMobile = shouldInsertSupportMobile
+                                                    ? (servicePoolCount <= 1 && supportInsertionIndex > 0 ? null : getServiceProfessionalForSlot(supportInsertionIndex))
+                                                    : null;
+
+                                                // Desktop md (2 colunas): após cada 3 linhas = 6 rotinas
+                                                const desktopMdSlotIndex = Math.floor((index + 1) / 6) - 1;
+                                                const shouldInsertSupportDesktopMd = (index + 1) % 6 === 0;
+                                                const supportProfessionalDesktopMd = shouldInsertSupportDesktopMd
+                                                    ? (servicePoolCount <= 1 && desktopMdSlotIndex > 0 ? null : getServiceProfessionalForSlot(desktopMdSlotIndex))
+                                                    : null;
+
+                                                // Desktop xl (3 colunas): após cada 3 linhas = 9 rotinas
+                                                const desktopXlSlotIndex = Math.floor((index + 1) / 9) - 1;
+                                                const shouldInsertSupportDesktopXl = (index + 1) % 9 === 0;
+                                                const supportProfessionalDesktopXl = shouldInsertSupportDesktopXl
+                                                    ? (servicePoolCount <= 1 && desktopXlSlotIndex > 0 ? null : getServiceProfessionalForSlot(desktopXlSlotIndex))
+                                                    : null;
                                                 return (
                                                     <React.Fragment key={habit.id}>
-                                                        <div className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${bgColor}`}>
-                                                            <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                                                                <div className={`p-2 rounded-lg ${iconClasses}`}>
-                                                                    <Icon className="w-5 h-5" />
+                                                        <div className="relative rounded-xl overflow-hidden">
+                                                            {canSwipeToComplete && (
+                                                                <div
+                                                                    className="absolute inset-y-0 left-0 flex items-center gap-1.5 bg-green-500/15 px-3 text-green-700"
+                                                                    style={{ width: `${Math.max(56, swipeOffset)}px`, opacity: Math.max(0.25, swipeProgress) }}
+                                                                >
+                                                                    <CheckCircleIcon className="w-4 h-4" />
+                                                                    <span className="text-[11px] font-bold">Feito</span>
                                                                 </div>
-                                                                <div className="flex-1">
-                                                                    <span className={`text-[13px] font-bold block leading-tight ${isCompleted ? 'text-green-800' : 'text-gray-800'}`}>{habit.name}</span>
-                                                                    <div className="flex items-center gap-x-2 text-[10px] text-gray-500">
-                                                                        <span className="font-medium">{formatSchedule(habit.schedule)}</span>
-                                                                        {habit.category && categoryStyle && (
-                                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${categoryStyle.badge}`}>
-                                                                                {habit.category}
+                                                            )}
+                                                            <div
+                                                                className={`flex items-center justify-between p-3 sm:p-2.5 rounded-xl border transition-transform ${canSwipeToComplete ? "" : "transition-all"} ${bgColor}`}
+                                                                style={canSwipeToComplete ? { transform: `translateX(${swipeOffset}px)` } : undefined}
+                                                                onTouchStart={canSwipeToComplete ? (event) => beginHabitSwipe(habit.id, event) : undefined}
+                                                                onTouchMove={canSwipeToComplete ? moveHabitSwipe : undefined}
+                                                                onTouchEnd={canSwipeToComplete ? () => endHabitSwipe(habit.id) : undefined}
+                                                                onTouchCancel={canSwipeToComplete ? () => endHabitSwipe(habit.id) : undefined}
+                                                            >
+                                                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                                    <div className={`p-2 rounded-lg ${iconClasses}`}>
+                                                                        <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                                    </div>
+                                                                    <div className="flex-1">
+                                                                        <span className={`text-sm sm:text-[13px] font-bold block leading-snug ${isCompleted ? 'text-green-800' : 'text-gray-800'}`}>{habit.name}</span>
+                                                                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 sm:gap-x-2 text-[10px] text-gray-500">
+                                                                            <span className="font-medium">{formatSchedule(habit.schedule)}</span>
+                                                                            {habit.category && categoryStyle && (
+                                                                                <span className={`hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${categoryStyle.badge}`}>
+                                                                                    {habit.category}
+                                                                                </span>
+                                                                            )}
+                                                                            <span className={`${rewardClass} font-bold flex items-center gap-0.5`}>
+                                                                                {habit.reward.type === 'STARS' ? `+${habit.reward.value}` : habit.reward.activityName}
+                                                                                {habit.reward.type === 'STARS' && <StarIcon className="w-3.5 h-3.5" />}
                                                                             </span>
-                                                                        )}
-                                                                        <span className={`${rewardClass} font-bold flex items-center gap-0.5`}>
-                                                                            {habit.reward.type === 'STARS' ? `+${habit.reward.value}` : habit.reward.activityName}
-                                                                            {habit.reward.type === 'STARS' && <StarIcon className="w-3.5 h-3.5" />}
-                                                                        </span>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
-                                                            </div>
-                                                            <div className="flex items-center gap-1 flex-shrink-0">
-                                                                {isFutureDate ? (
-                                                                    <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Agendado</span>
-                                                                ) : isPending ? (
-                                                                    canMarkHabits ? (
+                                                                <div className="ml-2 flex items-center gap-1.5 flex-shrink-0">
+                                                                    {isFutureDate ? (
+                                                                        <span className="text-[11px] font-bold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">Agendado</span>
+                                                                    ) : isPending ? (
+                                                                        canMarkHabits ? (
+                                                                            <>
+                                                                                <button onClick={() => rejectHabitCompletion(selectedChild.id, habit.id, viewedDate)} className="h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center text-red-500 hover:bg-red-100 rounded-xl transition-colors active:scale-95"><XCircleIcon className="w-5 h-5" /></button>
+                                                                                <button onClick={() => toggleHabitCompletion(selectedChild.id, habit.id, viewedDate)} className="h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center text-green-500 hover:bg-green-100 rounded-xl transition-colors active:scale-95"><CheckCircleIcon className="w-5 h-5" /></button>
+                                                                            </>
+                                                                        ) : null
+                                                                    ) : (
                                                                         <>
-                                                                            <button onClick={() => rejectHabitCompletion(selectedChild.id, habit.id, viewedDate)} className="p-2 text-red-500 hover:bg-red-100 rounded-xl transition-colors active:scale-95"><XCircleIcon className="w-6 h-6" /></button>
-                                                                            <button onClick={() => toggleHabitCompletion(selectedChild.id, habit.id, viewedDate)} className="p-2 text-green-500 hover:bg-green-100 rounded-xl transition-colors active:scale-95"><CheckCircleIcon className="w-6 h-6" /></button>
+                                                                            {canMarkHabits && (
+                                                                                <button onClick={() => toggleHabitCompletion(selectedChild.id, habit.id, viewedDate)} className={`h-9 w-9 sm:h-8 sm:w-8 rounded-lg transition-all font-bold text-[10px] flex items-center justify-center active:scale-95 ${isCompleted ? 'bg-green-500 text-white' : 'bg-white text-gray-400 hover:text-purple-600 border border-gray-200 shadow-sm'}`}>{isCompleted ? <CheckCircleIcon className="w-4 h-4 text-white" /> : 'OK'}</button>
+                                                                            )}
+                                                                            {canWriteHabits && (
+                                                                                <button onClick={() => setConfirmingDelete({ childId: selectedChild.id, habitId: habit.id, habitName: habit.name, date: viewedDate })} className="h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"><TrashIcon className="w-4 h-4" /></button>
+                                                                            )}
                                                                         </>
-                                                                    ) : null
-                                                                ) : (
-                                                                    <>
-                                                                        {canMarkHabits && (
-                                                                            <button onClick={() => toggleHabitCompletion(selectedChild.id, habit.id, viewedDate)} className={`h-8 w-8 rounded-lg transition-all font-bold text-[10px] flex items-center justify-center active:scale-95 ${isCompleted ? 'bg-green-500 text-white' : 'bg-white text-gray-400 hover:text-purple-600 border border-gray-200 shadow-sm'}`}>{isCompleted ? <CheckCircleIcon className="w-4 h-4 text-white" /> : 'OK'}</button>
-                                                                        )}
-                                                                        {canWriteHabits && (
-                                                                            <button onClick={() => setConfirmingDelete({ childId: selectedChild.id, habitId: habit.id, habitName: habit.name, date: viewedDate })} className="h-8 w-8 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"><TrashIcon className="w-4 h-4" /></button>
-                                                                        )}
-                                                                    </>
-                                                                )}
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                        {showSupportOnMobile && (
+                                                        {shouldInsertSupportMobile && supportProfessionalMobile && (
                                                             <div className="md:hidden col-span-full">
-                                                                {renderSpotlightSection()}
-                                                                {renderFavoritesSection()}
+                                                                {renderServiceSpotlight(supportProfessionalMobile, { inline: true })}
+                                                            </div>
+                                                        )}
+                                                        {shouldInsertSupportDesktopMd && supportProfessionalDesktopMd && (
+                                                            <div className="hidden md:block xl:hidden col-span-2">
+                                                                {renderServiceSpotlight(supportProfessionalDesktopMd, { inline: true })}
+                                                            </div>
+                                                        )}
+                                                        {shouldInsertSupportDesktopXl && supportProfessionalDesktopXl && (
+                                                            <div className="hidden xl:block col-span-3">
+                                                                {renderServiceSpotlight(supportProfessionalDesktopXl, { inline: true })}
                                                             </div>
                                                         )}
                                                     </React.Fragment>
@@ -1050,11 +1160,6 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                             )}
                                         </div>
                                     </div>
-
-                                    <div className="hidden md:block">
-                                        {renderSpotlightSection()}
-                                        {renderFavoritesSection()}
-                                    </div>
                                 </div>
                             ) : (
                                 <div className="max-w-4xl mx-auto space-y-6">
@@ -1063,11 +1168,13 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                         <h2 className="text-xl font-bold text-gray-700">Bem-vindo(a)!</h2>
                                         <p className="text-gray-500 text-sm mt-2 max-w-xs mx-auto">Comece adicionando uma pessoa para criar rotinas e hábitos personalizados.</p>
                                         {canWriteChildren && !isAdmin && (
-                                            <button onClick={() => setAddChildModalOpen(true)} className="mt-6 bg-purple-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg shadow-purple-500/20 active:scale-95 transition-transform">Adicionar Pessoa</button>
+                                            <button onClick={() => setAddChildModalOpen(true)} className="mt-6 inline-flex items-center gap-2 bg-purple-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg shadow-purple-500/20 active:scale-95 transition-transform">
+                                                <UsersIcon className="w-5 h-5" />
+                                                <PlusIcon className="w-4 h-4" />
+                                                <span>Adicionar Pessoa</span>
+                                            </button>
                                         )}
                                     </div>
-                                    {renderSpotlightSection()}
-                                    {renderFavoritesSection()}
                                 </div>
                             )}
                         </div>
@@ -1183,21 +1290,36 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
             <main className="flex-1 flex flex-col h-full overflow-hidden bg-white min-h-0 relative z-10 pointer-events-auto">
                {children.length > 0 && currentView !== "dashboard" && (
                    <div className="md:hidden border-b border-gray-100 px-4 py-2">
-                       <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                       <div className="relative">
+                           <div className="pointer-events-none absolute left-0 top-0 z-20 h-full w-8 bg-gradient-to-r from-white to-transparent" />
+                           <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                           {canWriteChildren && !isAdmin && (
+                               <button
+                                   type="button"
+                                   onClick={() => setAddChildModalOpen(true)}
+                                   className="sticky left-0 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-purple-200 bg-purple-50 text-purple-700 text-[11px] font-bold whitespace-nowrap shadow-sm"
+                                   aria-label="Adicionar pessoa"
+                                   title="Adicionar pessoa"
+                               >
+                                   <UsersIcon className="w-4 h-4" />
+                                   <PlusIcon className="w-3.5 h-3.5" />
+                               </button>
+                           )}
                            {children.map((child) => (
                                <button
                                    key={child.id}
                                    onClick={() => handleSelectChild(child)}
-                                   className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold whitespace-nowrap ${
+                                   className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[11px] font-semibold whitespace-nowrap ${
                                        selectedChildId === child.id
                                            ? "bg-purple-600 text-white border-purple-600"
                                            : "bg-white text-gray-600 border-gray-200"
                                    }`}
                                >
                                    <span>{child.avatar}</span>
-                                   <span className="max-w-[120px] truncate">{child.name}</span>
+                                   <span className="max-w-[108px] truncate">{child.name}</span>
                                </button>
                            ))}
+                           </div>
                        </div>
                    </div>
                )}
@@ -1208,6 +1330,7 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
 };
 
 export default ParentDashboard;
+
 
 
 

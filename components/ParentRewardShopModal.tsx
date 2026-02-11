@@ -82,7 +82,7 @@ const ParentRewardShopModal: React.FC<ParentRewardShopModalProps> = ({ child, on
                                 <button 
                                     onClick={() => handleRedeemClick(reward)} 
                                     disabled={!canAfford || !isAvailable}
-                                    className="bg-cyan-500 text-white font-semibold py-1 px-3 rounded-lg hover:bg-cyan-600 disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
+                                    className="bg-purple-600 text-white font-semibold py-1 px-3 rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
                                 >
                                     {!isAvailable ? 'Limite Atingido' : 'Resgatar'}
                                 </button>

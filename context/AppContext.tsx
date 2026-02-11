@@ -60,6 +60,7 @@ import {
 } from "../src/lib/db";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../src/lib/firebase";
+import { useFeedback } from "./FeedbackContext";
 
 export interface RewardAvailability {
   isAvailable: boolean;
@@ -67,6 +68,8 @@ export interface RewardAvailability {
   max: number;
   availableAgainText: string | null;
 }
+
+const MAX_CHILD_NAME_LENGTH = 12;
 
 interface AppContextType {
   // ✅ NOVO (para o AuthGate setar)
@@ -124,6 +127,7 @@ interface AppContextType {
   checkAdminPin: (pin: string) => boolean;
 
   setFamilyLocation: (location: FamilyLocation) => void;
+  setDefaultMasterProfessionalId: (professionalId: string | null) => Promise<void>;
 
   getStarStats: (childId: string) => { today: number; week: number; month: number };
 
@@ -209,6 +213,18 @@ function isProfessionalActiveNow(prof: Professional, todayStr: string): boolean 
   return true;
 }
 
+function isTierProLike(tier?: string): boolean {
+  return tier === "top" || tier === "pro";
+}
+
+function isTierListedLike(tier?: string): boolean {
+  return tier === "verified" || tier === "listed";
+}
+
+function isFavoritableTier(tier?: string): boolean {
+  return isTierProLike(tier) || tier === "exclusive";
+}
+
 function readLocalStorageJson<T>(keys: readonly string[]): T | null {
   for (const key of keys) {
     try {
@@ -219,7 +235,12 @@ function readLocalStorageJson<T>(keys: readonly string[]): T | null {
   return null;
 }
 
+function normalizeChildName(name: string): string {
+  return name.trim().slice(0, MAX_CHILD_NAME_LENGTH);
+}
+
 export const AppProvider = ({ children }: PropsWithChildren) => {
+  const { confirm, showToast } = useFeedback();
   // ✅ Agora as crianças vêm do Firestore
   const [childrenData, setChildrenData] = useState<Child[]>([]);
 
@@ -249,6 +270,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     {
       pin: null,
       adminPin: null,
+      defaultMasterProfessionalId: null,
     },
     ["kiddo-routines-settings"]
   );
@@ -410,18 +432,18 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   useEffect(() => {
     // limpa imediatamente para nao "vazar"
     setChildrenData([]);
-    setSettings((prev) => ({ ...prev, familyLocation: undefined }));
+    setSettings((prev) => ({ ...prev, familyLocation: undefined, defaultMasterProfessionalId: null }));
     setTemplatesData([]);
     templatesSeededRef.current = false;
 
     if (!familyId) return;
 
     const unsubSettings = listenFamilySettings(familyId, (data) => {
-      if (data?.familyLocation) {
-        setSettings((prev) => ({ ...prev, familyLocation: data.familyLocation }));
-      } else {
-        setSettings((prev) => ({ ...prev, familyLocation: undefined }));
-      }
+      setSettings((prev) => ({
+        ...prev,
+        familyLocation: data?.familyLocation ?? undefined,
+        defaultMasterProfessionalId: data?.defaultMasterProfessionalId ?? null,
+      }));
     });
 
     const colRef = collection(db, "families", familyId, "children");
@@ -633,6 +655,12 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     );
   };
 
+  const setDefaultMasterProfessionalId = async (professionalId: string | null) => {
+    setSettings((prev) => ({ ...prev, defaultMasterProfessionalId: professionalId ?? null }));
+    if (!familyId) return;
+    await updateFamilySettings(familyId, { defaultMasterProfessionalId: professionalId ?? null });
+  };
+
   const addRecommendation = (data: Omit<Recommendation, "id" | "createdAt" | "updatedAt">) => {
     const now = new Date().toISOString();
     const newRec: Recommendation = {
@@ -656,6 +684,8 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
 
   const toggleFavoriteProfessional = (professionalId: string) => {
     if (!uid) return;
+    const professional = supportNetworkProfessionals.find((p) => p.id === professionalId);
+    if (!professional || !isFavoritableTier(professional.tier)) return;
 
     const next = favoriteProfessionalIds.includes(professionalId)
       ? favoriteProfessionalIds.filter((id) => id !== professionalId)
@@ -716,11 +746,13 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
 
   const addChild = (name: string, avatar: string, birthDate?: string) => {
     if (!familyId) return;
+    const normalizedName = normalizeChildName(name);
+    if (!normalizedName) return;
 
     const id = `child-${crypto.randomUUID()}`;
     const newChild: Child = {
       id,
-      name,
+      name: normalizedName,
       avatar,
       stars: 0,
       habits: [],
@@ -749,8 +781,10 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   ) => {
     const current = childrenData.find((c) => c.id === childId);
     if (!current) return;
+    const normalizedName = normalizeChildName(name);
+    if (!normalizedName) return;
 
-    const updated: Child = { ...current, name, avatar, birthDate, showAgeInfo };
+    const updated: Child = { ...current, name: normalizedName, avatar, birthDate, showAgeInfo };
     saveChild(updated);
   };
 
@@ -1071,9 +1105,17 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   };
 
   const resetRedemptionLogs = () => {
-    if (window.confirm("Isso apagará todo o histórico de resgates e os limites serão zerados. Continuar?")) {
+    void confirm({
+      title: "Limpar histórico de resgates?",
+      message: "Isso apagará todo o histórico de resgates e os limites serão zerados.",
+      confirmText: "Limpar histórico",
+      cancelText: "Cancelar",
+      tone: "danger",
+    }).then((accepted) => {
+      if (!accepted) return;
       setRedeemedRewardsData([]);
-    }
+      showToast({ title: "Histórico limpo com sucesso.", tone: "success" });
+    });
   };
 
   // ============================================================
@@ -1109,7 +1151,9 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   };
 
   const getFavoriteProfessionals = (): Professional[] => {
-    return supportNetworkProfessionals.filter((p) => favoriteProfessionalIds.includes(p.id));
+    return supportNetworkProfessionals.filter(
+      (p) => favoriteProfessionalIds.includes(p.id) && isFavoritableTier(p.tier)
+    );
   };
 
   const value: AppContextType = {
@@ -1154,6 +1198,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     setAdminPin,
     checkAdminPin,
     setFamilyLocation,
+    setDefaultMasterProfessionalId,
 
     getStarStats,
 

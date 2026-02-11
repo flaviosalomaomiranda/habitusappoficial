@@ -5,6 +5,7 @@ import { auth, db } from "@/src/lib/firebase";
 import Login from "@/components/Login";
 import { acceptInvite, ensureUserAndFamily } from "@/src/lib/db";
 import { doc, getDoc } from "firebase/firestore";
+import { useFeedback } from "@/context/FeedbackContext";
 
 // ✅ pega o setter do contexto (AuthGate precisa estar dentro do <AppProvider>)
 import { useAppContext } from "@/context/AppContext";
@@ -19,6 +20,7 @@ export default function AuthGate({ children }: AuthGateProps) {
 
   // ✅ NOVO
   const { setFamilyId } = useAppContext();
+  const { confirm, showToast } = useFeedback();
 
   useEffect(() => {
     let cancelled = false;
@@ -44,9 +46,14 @@ export default function AuthGate({ children }: AuthGateProps) {
           const currentFamilyId = (userSnap.data() as any)?.familyId ?? null;
 
           if (currentFamilyId) {
-            const confirmReplace = window.confirm(
-              "Voce ja pertence a outra familia. Ao entrar pelo convite, seus dados atuais serao desconectados. Deseja continuar?"
-            );
+            const confirmReplace = await confirm({
+              title: "Trocar de família?",
+              message:
+                "Você já pertence a outra família. Ao entrar pelo convite, seus dados atuais serão desconectados.",
+              confirmText: "Trocar",
+              cancelText: "Manter família atual",
+              tone: "danger",
+            });
             if (!confirmReplace) {
               const { familyId } = await ensureUserAndFamily(u);
               if (!cancelled) setFamilyId(familyId);
@@ -72,6 +79,11 @@ export default function AuthGate({ children }: AuthGateProps) {
         }
       } catch (e) {
         console.error("AuthGate falhou:", e);
+        showToast({
+          title: "Falha ao processar login",
+          message: "Tentando recuperar seu acesso automaticamente.",
+          tone: "error",
+        });
 
         if (!cancelled) {
           const params = new URLSearchParams(window.location.search);
@@ -96,7 +108,7 @@ export default function AuthGate({ children }: AuthGateProps) {
       cancelled = true;
       unsub();
     };
-  }, [setFamilyId]);
+  }, [setFamilyId, confirm, showToast]);
 
   if (loading) {
     return (

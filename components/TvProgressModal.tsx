@@ -33,7 +33,7 @@ const TvProgressModal: React.FC<TvProgressModalProps> = ({ child, onClose }) => 
 
                 <div className="flex-grow grid grid-cols-2 grid-rows-2 gap-6">
                     <StatCard label="Hoje" value={stats.today} color="bg-green-500/80" />
-                    <StatCard label="Esta Semana" value={stats.week} color="bg-blue-500/80" />
+                    <StatCard label="Esta Semana" value={stats.week} color="bg-purple-500/80" />
                     <StatCard label="Este Mês" value={stats.month} color="bg-purple-500/80" />
                     <StatCard label="Total" value={child.stars} color="bg-yellow-500/80" />
                 </div>

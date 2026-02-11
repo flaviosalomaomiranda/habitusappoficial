@@ -391,7 +391,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ onClose }) => {
                   type="button"
                   onClick={() => setShoppingPreferences((prev) => toggleValue(prev, tag))}
                   className={`px-3 py-1 rounded-full text-xs font-semibold border ${
-                    shoppingPreferences.includes(tag) ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-600 border-gray-200'
+                    shoppingPreferences.includes(tag) ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600 border-gray-200'
                   }`}
                 >
                   {tag}

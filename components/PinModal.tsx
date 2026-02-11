@@ -9,13 +9,15 @@ interface PinModalProps {
 
 const PinModal: React.FC<PinModalProps> = ({ onCorrectPin, onClose, isSettingPin }) => {
   const [pin, setPin] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (pin.length === 4) {
+      setError(null);
       onCorrectPin(pin);
     } else {
-      alert('O PIN deve ter 4 dígitos.');
+      setError('O PIN deve ter 4 dígitos.');
     }
   };
 
@@ -31,10 +33,14 @@ const PinModal: React.FC<PinModalProps> = ({ onCorrectPin, onClose, isSettingPin
             pattern="\d*"
             maxLength={4}
             value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ''))}
+            onChange={(e) => {
+              setError(null);
+              setPin(e.target.value.replace(/[^0-9]/g, ''));
+            }}
             className="w-40 text-center text-4xl tracking-[.5em] font-bold mt-6 p-2 border-b-2 focus:border-purple-500 outline-none"
             autoFocus
           />
+          {error ? <p className="mt-3 text-sm font-semibold text-red-600">{error}</p> : null}
           <div className="flex justify-center gap-4 mt-8">
             <button type="button" onClick={onClose} className="px-6 py-3 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300">Cancelar</button>
             <button type="submit" className="px-6 py-3 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700">Confirmar</button>

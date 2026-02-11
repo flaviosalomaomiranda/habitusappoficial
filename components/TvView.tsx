@@ -3,11 +3,15 @@ import { useAppContext } from '../context/AppContext';
 import { getTodayDateString, calculateAge } from '../utils/dateUtils';
 import { HABIT_ICONS, getHabitCategoryStyle } from '../constants';
 import { StarIcon } from './icons/HabitIcons';
-import { TrophyIcon, ChartBarIcon, CheckCircleIcon } from './icons/MiscIcons';
+import { TrophyIcon, ChartBarIcon, CheckCircleIcon, UserIcon } from './icons/MiscIcons';
 import RewardShopView from './RewardShopView';
 import TvProgressModal from './TvProgressModal';
 
-const TvView: React.FC = () => {
+interface TvViewProps {
+    onExitToParent: () => void;
+}
+
+const TvView: React.FC<TvViewProps> = ({ onExitToParent }) => {
     const { children, getHabitsForChildOnDate, getStarStats } = useAppContext();
     const [activeChildIndex, setActiveChildIndex] = useState(0);
     
@@ -47,7 +51,7 @@ const TvView: React.FC = () => {
     
     return (
         <>
-        <div className="h-[100dvh] bg-gradient-to-br from-purple-800 to-indigo-900 text-white p-3 sm:p-5 flex flex-col overflow-hidden">
+        <div className="h-[100dvh] bg-gradient-to-br from-purple-800 to-violet-900 text-white p-3 sm:p-5 flex flex-col overflow-hidden">
             {/* Header */}
             <header className="flex flex-wrap items-center justify-between gap-3 mb-3">
                 <div className="min-w-0">
@@ -69,15 +73,19 @@ const TvView: React.FC = () => {
                     </div>
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                    <button onClick={onExitToParent} className="bg-white/20 text-white font-bold text-sm sm:text-base flex items-center gap-2 px-3 py-2 rounded-full hover:bg-white/30 transition-colors">
+                        <UserIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <span>Modo dos Pais</span>
+                    </button>
                     <div className="bg-yellow-400 text-yellow-900 font-bold text-xl sm:text-2xl flex items-center gap-2 px-3 py-2 rounded-full shadow-lg">
                         <StarIcon className="w-5 h-5 sm:w-6 sm:h-6" />
                         <span>{activeChild.stars}</span>
                     </div>
-                    <button onClick={() => setProgressOpen(true)} className="bg-blue-400 text-blue-900 font-bold text-sm sm:text-base flex items-center gap-2 px-3 py-2 rounded-full shadow-lg transition-transform transform hover:scale-105">
+                    <button onClick={() => setProgressOpen(true)} className="bg-purple-300 text-purple-900 font-bold text-sm sm:text-base flex items-center gap-2 px-3 py-2 rounded-full shadow-lg transition-transform transform hover:scale-105">
                         <ChartBarIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                         <span>Progresso</span>
                     </button>
-                    <button onClick={() => setShopOpen(true)} className="bg-cyan-400 text-cyan-900 font-bold text-sm sm:text-base flex items-center gap-2 px-3 py-2 rounded-full shadow-lg transition-transform transform hover:scale-105">
+                    <button onClick={() => setShopOpen(true)} className="bg-purple-200 text-purple-900 font-bold text-sm sm:text-base flex items-center gap-2 px-3 py-2 rounded-full shadow-lg transition-transform transform hover:scale-105">
                         <TrophyIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                         <span>Recompensas</span>
                     </button>

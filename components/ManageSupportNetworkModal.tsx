@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { Manager, Professional } from '../types';
+import { ExclusiveRoutineTemplate, Manager, Professional } from '../types';
 import { getStates, getCitiesByState, UF, Municipio } from '../services/ibgeService';
 import { SPECIALTIES } from '../data/supportNetworkData';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -218,7 +218,7 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                     return;
                 }
                 const confirmReplace = window.confirm(
-                    'Atenção: este upload irá substituir toda a lista existente da Rede de Apoio. Deseja continuar?'
+                    'Atenção: este upload irá substituir toda a lista existente da Rede de Serviços Profissionais. Deseja continuar?'
                 );
                 if (!confirmReplace) return;
                 setSupportNetworkProfessionals(data);
@@ -252,13 +252,13 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-4xl m-4 flex flex-col" style={{ maxHeight: '90vh' }}>
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold">Admin: Rede de Apoio</h2>
+                    <h2 className="text-2xl font-bold">Admin: Rede de Serviços Profissionais</h2>
                     <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
                 </div>
                 
                 <div className="flex flex-wrap gap-2 border-b pb-4 mb-4">
                     <button onClick={() => { setEditingProfessional(null); setIsFormOpen(true); }} className="px-4 py-2 bg-green-500 text-white rounded-lg font-semibold">Adicionar Profissional</button>
-                    <button onClick={handleBackup} className="px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold">Backup</button>
+                    <button onClick={handleBackup} className="px-4 py-2 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700">Backup</button>
                     {!isManager && (
                         <button onClick={handlePublishToCloud} className="px-4 py-2 bg-purple-600 text-white rounded-lg font-semibold">Publicar na nuvem</button>
                     )}
@@ -319,8 +319,8 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                                     <td>
                                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                                             prof.tier === 'master' ? 'bg-purple-100 text-purple-700' :
-                                            prof.tier === 'exclusive' ? 'bg-indigo-100 text-indigo-700' :
-                                            prof.tier === 'top' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+                                            prof.tier === 'exclusive' ? 'bg-purple-100 text-purple-700' :
+                                            prof.tier === 'top' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
                                         }`}>
                                             {prof.tier}
                                         </span>
@@ -365,7 +365,7 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                                                     });
                                                     alert("Solicitação enviada para o admin.");
                                                 }}
-                                                className="text-amber-600 font-semibold"
+                                                className="text-purple-600 font-semibold"
                                             >
                                                 Solicitar exclusão
                                             </button>
@@ -428,6 +428,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
     );
     const [keywordText, setKeywordText] = useState("");
     const [highlightsText, setHighlightsText] = useState("");
+    const [exclusiveRoutinesText, setExclusiveRoutinesText] = useState("");
     const [otherSpecialtiesText, setOtherSpecialtiesText] = useState("");
     const [otherLinksText, setOtherLinksText] = useState("");
     const [states, setStates] = useState<UF[]>([]);
@@ -450,6 +451,11 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
             setFormState({ ...professional, specialties: baseSpecialties });
             setKeywordText((professional.spotlightKeywords || []).join(", "));
             setHighlightsText((professional.highlights || []).join(", "));
+            setExclusiveRoutinesText(
+                (professional.exclusiveRoutines || [])
+                    .map((routine) => `${routine.name} | ${routine.diamonds}`)
+                    .join("\n")
+            );
             const other = baseSpecialties.filter((s) => !SPECIALTIES.includes(s));
             setOtherSpecialtiesText(other.join(", "));
             setOtherLinksText((professional.contacts?.otherLinks || []).join("\n"));
@@ -460,6 +466,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
             });
             setKeywordText("");
             setHighlightsText("");
+            setExclusiveRoutinesText("");
             setOtherSpecialtiesText("");
             setOtherLinksText("");
         }
@@ -703,6 +710,33 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
             .map((h) => h.trim())
             .filter(Boolean);
 
+        const exclusiveRoutines: ExclusiveRoutineTemplate[] = exclusiveRoutinesText
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line, idx) => {
+                const [nameRaw, diamondsRaw] = line.split("|").map((item) => item?.trim() || "");
+                const diamonds = Number(diamondsRaw || "0");
+                return {
+                    id: `routine-${idx + 1}`,
+                    name: nameRaw,
+                    diamonds: Number.isNaN(diamonds) ? 0 : diamonds,
+                };
+            })
+            .filter((item) => item.name.length > 0);
+
+        if (formState.tier === "exclusive") {
+            if (exclusiveRoutines.length === 0) {
+                return alert("Informe pelo menos 1 rotina personalizada para o Exclusivo.");
+            }
+            if (exclusiveRoutines.length > 10) {
+                return alert("O Exclusivo pode ter no máximo 10 rotinas personalizadas.");
+            }
+            if (exclusiveRoutines.some((item) => item.diamonds <= 0)) {
+                return alert("Cada rotina personalizada deve ter diamantes maiores que zero.");
+            }
+        }
+
         if (formState.tier === "exclusive" && spotlightKeywords.length === 0) {
             return alert("Informe palavras-chave para o Exclusivo.");
         }
@@ -717,12 +751,13 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
             spotlightKeywords,
             spotlightDailyLimit: formState.spotlightDailyLimit || 2,
             paymentPrice: formState.paymentPrice ? Number(formState.paymentPrice) : undefined,
+            exclusiveRoutines: formState.tier === "exclusive" ? exclusiveRoutines : [],
         } as Professional;
         
         // Regras de Unicidade
         if (data.tier === 'master') {
             const existing = supportNetworkProfessionals.find(p => p.tier === 'master' && p.cityId === data.cityId && p.id !== data.id && p.isActive);
-            if (existing && !window.confirm(`Já existe um Master em ${data.city} (${existing.name}). Deseja rebaixar o atual para Essencial e assumir como Master?`)) return;
+            if (existing && !window.confirm(`Já existe um Master em ${data.city} (${existing.name}). Deseja rebaixar o atual para Listado e assumir como Master?`)) return;
             if (existing) {
                 updateProfessional({ ...existing, tier: 'verified' });
             }
@@ -891,7 +926,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                                 .map(c => <option key={c.id} value={String(c.id)}>{c.nome}</option>)}
                         </select>
                         <select name="tier" value={formState.tier || 'verified'} onChange={handleChange} className="p-2 border rounded bg-white font-bold text-purple-700 col-span-2">
-                            <option value="verified">Essencial</option>
+                            <option value="verified">Listado</option>
                             <option value="top">Pro (Rodízio)</option>
                             <option value="exclusive">Exclusivo (1 por Especialidade)</option>
                             <option value="master">Master (1 por Cidade)</option>
@@ -946,7 +981,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                                 <button
                                     type="button"
                                     onClick={() => alert("Integração com Mercado Pago será adicionada depois.")}
-                                    className="col-span-2 p-2 border rounded bg-amber-50 text-amber-800 text-xs font-semibold"
+                                    className="col-span-2 p-2 border rounded bg-purple-50 text-purple-800 text-xs font-semibold"
                                 >
                                     Conectar Mercado Pago (em breve)
                                 </button>
@@ -1043,7 +1078,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                                               <div className="flex gap-2">
                                                   <div className="flex-1 text-center text-[10px] font-bold py-1 rounded-md bg-green-500/90">WhatsApp</div>
                                                   <div className="flex-1 text-center text-[10px] font-bold py-1 rounded-md bg-white/15">Localização</div>
-                                                  <div className="flex-1 text-center text-[10px] font-bold py-1 rounded-md bg-pink-500/80">Instagram</div>
+                                                  <div className="flex-1 text-center text-[10px] font-bold py-1 rounded-md bg-purple-500">Instagram</div>
                                               </div>
                                           </div>
                                       </div>
@@ -1075,6 +1110,16 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                                 placeholder="Limite por dia"
                                 className="p-2 border rounded"
                             />
+                            <div className="col-span-2">
+                                <div className="text-xs font-semibold text-gray-500 mb-1">Rotinas personalizadas (máximo 10) - formato: Nome da rotina | Diamantes</div>
+                                <textarea
+                                    value={exclusiveRoutinesText}
+                                    onChange={(e) => setExclusiveRoutinesText(e.target.value)}
+                                    placeholder={"Rotina da manhã | 10\nRotina de estudos | 15"}
+                                    className="p-2 border rounded w-full h-28"
+                                />
+                                <p className="text-[11px] text-gray-500 mt-1">Cada linha representa uma rotina personalizada do profissional EXCLUSIVO.</p>
+                            </div>
                         </div>
                     )}
 

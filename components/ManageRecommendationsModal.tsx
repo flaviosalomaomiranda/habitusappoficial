@@ -102,7 +102,7 @@ const ManageRecommendationsModal: React.FC<ManageRecommendationsModalProps> = ({
 
                 <div className="flex flex-wrap gap-2 border-b pb-4 mb-4">
                     <button onClick={() => { setEditingRecommendation(null); setIsFormOpen(true); }} className="px-4 py-2 bg-green-500 text-white rounded-lg font-semibold flex items-center gap-2"><PlusIcon className="w-5 h-5"/> Nova</button>
-                    <button onClick={handleExport} className="px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold">Exportar JSON</button>
+                    <button onClick={handleExport} className="px-4 py-2 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700">Exportar JSON</button>
                     <button onClick={() => setIsImporting(!isImporting)} className="px-4 py-2 bg-orange-500 text-white rounded-lg font-semibold">Importar JSON</button>
                     <button onClick={handleRestoreSeed} className="px-4 py-2 bg-red-500 text-white rounded-lg font-semibold">Restaurar Padrão</button>
                 </div>
@@ -129,7 +129,7 @@ const ManageRecommendationsModal: React.FC<ManageRecommendationsModalProps> = ({
                                     <span className={`px-2 py-0.5 rounded-full font-semibold ${rec.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                                         {rec.isActive ? 'Ativo' : 'Inativo'}
                                     </span>
-                                    {rec.isAffiliate && <span className="px-2 py-0.5 rounded-full font-semibold bg-blue-100 text-blue-700">Afiliado</span>}
+                                    {rec.isAffiliate && <span className="px-2 py-0.5 rounded-full font-semibold bg-purple-100 text-purple-700">Afiliado</span>}
                                 </div>
                                 <div className="mt-3 pt-3 border-t flex justify-end">
                                     <button onClick={() => { setEditingRecommendation(rec); setIsFormOpen(true); }} className="text-purple-600 font-semibold text-sm">Editar</button>
