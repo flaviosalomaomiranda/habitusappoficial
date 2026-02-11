@@ -48,6 +48,8 @@ const isProTier = (tier?: string) => tier === "top" || tier === "pro";
 const isListedTier = (tier?: string) => tier === "verified" || tier === "listed";
 const isFavoritableTier = (tier?: string) => isProTier(tier) || tier === "exclusive";
 
+const normalizeText = (value?: string) => (value || "").trim().toLowerCase();
+
 const ProfessionalCard: React.FC<{ professional: Professional, isFeatured?: boolean }> = ({ professional, isFeatured }) => {
     const { favoriteProfessionalIds, toggleFavoriteProfessional } = useAppContext();
     const isFavorite = favoriteProfessionalIds.includes(professional.id);
@@ -220,17 +222,42 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
         }
     };
     
-    const filteredProfessionals = useMemo(() => {
+    const ufSiglaSelecionada = useMemo(() => {
+        const normalized = normalizeText(selectedState);
+        if (!normalized) return "";
+        const bySigla = states.find((s) => normalizeText(s.sigla) === normalized);
+        if (bySigla) return bySigla.sigla;
+        const byNome = states.find((s) => normalizeText(s.nome) === normalized);
+        return byNome?.sigla || selectedState;
+    }, [selectedState, states]);
+
+    const strictFilteredProfessionals = useMemo(() => {
         if (!selectedState || !selectedCity) return [];
 
         return activeSupportNetworkProfessionals.filter(p => {
             const matchesTier = p.tier !== 'master';
-            const matchesLocation = p.uf === selectedState && String(p.cityId) === selectedCity;
+            const profUfNormalized = normalizeText(p.uf);
+            const selectedUfNormalized = normalizeText(ufSiglaSelecionada || selectedState);
+            const matchesUf =
+                !selectedUfNormalized ||
+                profUfNormalized === selectedUfNormalized ||
+                profUfNormalized === normalizeText(states.find((s) => s.sigla === ufSiglaSelecionada)?.nome);
+            const matchesLocation = matchesUf && String(p.cityId) === selectedCity;
             const matchesSpecialty = !selectedSpecialty || (p.specialties?.includes(selectedSpecialty) || p.specialty === selectedSpecialty);
             const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
             return matchesTier && matchesLocation && matchesSpecialty && matchesSearch;
         });
-    }, [selectedState, selectedCity, selectedSpecialty, searchQuery, activeSupportNetworkProfessionals]);
+    }, [selectedState, selectedCity, selectedSpecialty, searchQuery, activeSupportNetworkProfessionals, ufSiglaSelecionada, states]);
+
+    const filteredProfessionals = useMemo(() => {
+        if (strictFilteredProfessionals.length > 0) return strictFilteredProfessionals;
+        if (!selectedCity) return [];
+        return activeSupportNetworkProfessionals.filter((p) => {
+            if (p.tier === "master") return false;
+            if (String(p.cityId) !== selectedCity) return false;
+            return p.name.toLowerCase().includes(searchQuery.toLowerCase());
+        });
+    }, [strictFilteredProfessionals, selectedCity, activeSupportNetworkProfessionals, searchQuery]);
     
     // Novo Agrupamento: Exclusive no topo
     const exclusiveProfessional = useMemo(() => 
@@ -240,7 +267,7 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
     const { topProfessionals, rotationPeriod } = useMemo(() => {
         if (!filteredProfessionals) return { topProfessionals: [], rotationPeriod: 0 };
 
-        const topList = filteredProfessionals.filter(p => isProTier(p.tier) && p.tierJoinedAt);
+        const topList = filteredProfessionals.filter(p => isProTier(p.tier));
         const n = topList.length;
 
         if (n <= 1) {
@@ -248,8 +275,13 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
         }
 
         const periodDays = n === 2 ? 15 : 10;
-        const baseOrder = [...topList].sort((a, b) => new Date(a.tierJoinedAt!).getTime() - new Date(b.tierJoinedAt!).getTime());
-        const anchorDate = new Date(baseOrder[0].tierJoinedAt!);
+        const baseOrder = [...topList].sort((a, b) => {
+            const aTime = a.tierJoinedAt ? new Date(a.tierJoinedAt).getTime() : 0;
+            const bTime = b.tierJoinedAt ? new Date(b.tierJoinedAt).getTime() : 0;
+            if (aTime !== bTime) return aTime - bTime;
+            return a.name.localeCompare(b.name);
+        });
+        const anchorDate = baseOrder[0].tierJoinedAt ? new Date(baseOrder[0].tierJoinedAt) : new Date("2024-01-01T00:00:00Z");
         
         const today = new Date();
         const todayUTC = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());

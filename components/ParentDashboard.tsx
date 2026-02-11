@@ -535,12 +535,15 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
         if (activeCityMaster) return activeCityMaster;
 
         const defaultMasterId = settings.defaultMasterProfessionalId;
-        if (!defaultMasterId) return null;
+        if (defaultMasterId) {
+            const fallbackById = supportNetworkProfessionals.find(
+                (p) => p.id === defaultMasterId && p.isActive !== false
+            );
+            if (fallbackById) return fallbackById;
+        }
 
-        const fallback = supportNetworkProfessionals.find(
-            (p) => p.id === defaultMasterId && p.isActive !== false
-        );
-        return fallback ?? null;
+        const anyActiveMaster = activeSupportNetworkProfessionals.find((p) => p.tier === "master");
+        return anyActiveMaster ?? null;
     }, [activeSupportNetworkProfessionals, familyLocation, settings.defaultMasterProfessionalId, supportNetworkProfessionals]);
 
     const cityProProfessionals = useMemo(() => {
