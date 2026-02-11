@@ -549,7 +549,6 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     const targetVersion = "2";
     const current = localStorage.getItem(versionKey);
     if (current !== targetVersion) {
-      setSupportNetworkProfessionals([]);
       localStorage.setItem(versionKey, targetVersion);
     }
 
@@ -621,25 +620,40 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   }, []);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "supportNetwork"), (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Professional[];
-      if (docs.length > 0) {
-        setSupportNetworkProfessionals(docs);
-        return;
-      }
+    const unsub = onSnapshot(
+      collection(db, "supportNetwork"),
+      (snap) => {
+        const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Professional[];
+        if (docs.length > 0) {
+          setSupportNetworkProfessionals(docs);
+          return;
+        }
 
-      const localList = latestSupportNetworkRef.current || [];
-      if (!supportNetworkSeeded && localList.length > 0 && isAdminUser(auth.currentUser?.email || "")) {
-        setSupportNetworkSeeded(true);
-        localList.forEach((prof) => {
-          setDoc(
-            doc(db, "supportNetwork", prof.id),
-            { ...prof, updatedAt: serverTimestamp() },
-            { merge: true }
-          ).catch((err) => console.error("Falha ao semear supportNetwork:", err));
-        });
+        const localList = latestSupportNetworkRef.current || [];
+        if (localList.length === 0) {
+          setSupportNetworkProfessionals(SUPPORT_NETWORK_SEED);
+        }
+        const seedSource = localList.length > 0 ? localList : SUPPORT_NETWORK_SEED;
+        const isAdmin = isAdminUser(auth.currentUser?.email || "");
+
+        if (!supportNetworkSeeded && seedSource.length > 0 && isAdmin) {
+          setSupportNetworkSeeded(true);
+          seedSource.forEach((prof) => {
+            setDoc(
+              doc(db, "supportNetwork", prof.id),
+              { ...prof, updatedAt: serverTimestamp() },
+              { merge: true }
+            ).catch((err) => console.error("Falha ao semear supportNetwork:", err));
+          });
+        }
+      },
+      (err) => {
+        console.error("Falha ao ler supportNetwork:", err);
+        if ((latestSupportNetworkRef.current || []).length === 0) {
+          setSupportNetworkProfessionals(SUPPORT_NETWORK_SEED);
+        }
       }
-    });
+    );
     return () => unsub();
   }, [supportNetworkSeeded]);
 
