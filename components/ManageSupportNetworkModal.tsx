@@ -11,6 +11,7 @@ import { db } from '../src/lib/firebase';
 
 interface ManageSupportNetworkModalProps {
     onClose: () => void;
+    embedded?: boolean;
 }
 
 const PROFILE_IMAGE_MAX_BYTES = 1_500_000;
@@ -146,7 +147,7 @@ const parseFirestoreDocToProfessional = (doc: any): Professional | null => {
     return mapped as Professional;
 };
 
-const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ onClose }) => {
+const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ onClose, embedded = false }) => {
     const { 
         supportNetworkProfessionals, 
         settings, 
@@ -326,8 +327,11 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
     }
     
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-4xl m-4 flex flex-col" style={{ maxHeight: '90vh' }}>
+        <div className={embedded ? "w-full" : "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"}>
+            <div
+                className={`bg-white rounded-lg shadow-xl p-6 w-full max-w-4xl m-4 flex flex-col ${embedded ? "mx-auto my-0" : ""}`}
+                style={{ maxHeight: embedded ? 'calc(100vh - 140px)' : '90vh' }}
+            >
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold">Admin: Rede de Serviços Profissionais</h2>
                     <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 text-2xl">&times;</button>

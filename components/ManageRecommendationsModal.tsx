@@ -7,9 +7,10 @@ import { PlusIcon } from './icons/MiscIcons';
 
 interface ManageRecommendationsModalProps {
     onClose: () => void;
+    embedded?: boolean;
 }
 
-const ManageRecommendationsModal: React.FC<ManageRecommendationsModalProps> = ({ onClose }) => {
+const ManageRecommendationsModal: React.FC<ManageRecommendationsModalProps> = ({ onClose, embedded = false }) => {
     const {
         settings,
         checkAdminPin,
@@ -93,8 +94,8 @@ const ManageRecommendationsModal: React.FC<ManageRecommendationsModalProps> = ({
 
     // Main content of the modal once authenticated
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-5xl m-4 flex flex-col h-full max-h-[95vh]">
+        <div className={embedded ? "w-full" : "fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"}>
+            <div className={`bg-white rounded-2xl shadow-xl p-6 w-full max-w-5xl m-4 flex flex-col h-full ${embedded ? "mx-auto my-0 max-h-[calc(100vh-140px)]" : "max-h-[95vh]"}`}>
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold">Admin: Recomendações</h2>
                     <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 text-3xl">&times;</button>

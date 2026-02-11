@@ -832,7 +832,9 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                         </div>
                     )}
                 <button onClick={() => { setManageTemplatesModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><ClipboardListIcon className="w-5 h-5 text-gray-500" /> Modelos de Rotina</button>
-                <button onClick={() => { setProgressModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><ChartBarIcon className="w-5 h-5 text-gray-500" /> Quadro de Progresso</button>
+                {!isAdmin && (
+                    <button onClick={() => { setProgressModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><ChartBarIcon className="w-5 h-5 text-gray-500" /> Quadro de Progresso</button>
+                )}
                 <button onClick={() => { setManageRewardsModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><StarsIcon className="w-5 h-5 text-gray-500" /> Gerenciar Recompensas</button>
                 {canManageMembers && (
                     <button onClick={() => { setManageMembersModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><UserIcon className="w-5 h-5 text-gray-500" /> Gerenciar Membros</button>
@@ -847,9 +849,13 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                     <TvIcon className="w-5 h-5 text-purple-600" /> Modo TV/Tablet
                 </button>
                 <hr className="my-2"/>
-                <button onClick={() => { setCurrentView('recommendations'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><GiftIcon className="w-5 h-5 text-gray-500" /> Shopping</button>
-                <button onClick={() => { setCurrentView('supportNetwork'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><UsersIcon className="w-5 h-5 text-gray-500" /> Rede de Serviços Profissionais</button>
-                <button onClick={() => { setCurrentView('favorites'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><HeartIcon className="w-5 h-5 text-gray-500" /> Meus Favoritos</button>
+                {!isAdmin && (
+                    <>
+                        <button onClick={() => { setCurrentView('recommendations'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><GiftIcon className="w-5 h-5 text-gray-500" /> Shopping</button>
+                        <button onClick={() => { setCurrentView('supportNetwork'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><UsersIcon className="w-5 h-5 text-gray-500" /> Rede de Serviços Profissionais</button>
+                        <button onClick={() => { setCurrentView('favorites'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><HeartIcon className="w-5 h-5 text-gray-500" /> Meus Favoritos</button>
+                    </>
+                )}
                 {isManager && !isAdmin && (
                     <div className="pt-2 mt-2 border-t">
                         <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Gerente</div>
@@ -901,13 +907,13 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                 );
             case "adminSupportNetwork":
                 if (!isAdmin && !isManager) return <div className="p-6 text-sm text-gray-500">Sem permissão.</div>;
-                return <ManageSupportNetworkModal onClose={() => setCurrentView("dashboard")} />;
+                return <ManageSupportNetworkModal embedded onClose={() => setCurrentView("dashboard")} />;
             case "adminRecommendations":
                 if (!isAdmin) return <div className="p-6 text-sm text-gray-500">Sem permissão.</div>;
-                return <ManageRecommendationsModal onClose={() => setCurrentView("dashboard")} />;
+                return <ManageRecommendationsModal embedded onClose={() => setCurrentView("dashboard")} />;
             case "adminSupportNetworkPricing":
                 if (!isAdmin) return <div className="p-6 text-sm text-gray-500">Sem permissão.</div>;
-                return <ManageSupportNetworkPricingModal onClose={() => setCurrentView("dashboard")} />;
+                return <ManageSupportNetworkPricingModal embedded onClose={() => setCurrentView("dashboard")} />;
             case 'dashboard':
             default:
                 return (

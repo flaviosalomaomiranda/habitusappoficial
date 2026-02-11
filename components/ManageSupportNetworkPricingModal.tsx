@@ -4,6 +4,7 @@ import { ProfessionalTier, SupportNetworkPricing } from "../types";
 
 interface ManageSupportNetworkPricingModalProps {
   onClose: () => void;
+  embedded?: boolean;
 }
 
 const tierLabels: Record<ProfessionalTier, string> = {
@@ -20,7 +21,7 @@ const emptyPlans: SupportNetworkPricing["plans"] = {
   master: { monthly: 0, annual: 0 },
 };
 
-const ManageSupportNetworkPricingModal: React.FC<ManageSupportNetworkPricingModalProps> = ({ onClose }) => {
+const ManageSupportNetworkPricingModal: React.FC<ManageSupportNetworkPricingModalProps> = ({ onClose, embedded = false }) => {
   const {
     supportNetworkPricing,
     updateSupportNetworkPricing,
@@ -71,8 +72,11 @@ const ManageSupportNetworkPricingModal: React.FC<ManageSupportNetworkPricingModa
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[51] p-4">
-      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-3xl flex flex-col" style={{ maxHeight: "90vh" }}>
+    <div className={embedded ? "w-full" : "fixed inset-0 bg-black/60 flex items-center justify-center z-[51] p-4"}>
+      <div
+        className={`bg-white rounded-lg shadow-xl p-6 w-full max-w-3xl flex flex-col ${embedded ? "mx-auto my-0" : ""}`}
+        style={{ maxHeight: embedded ? "calc(100vh - 140px)" : "90vh" }}
+      >
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">Admin: Precificação dos Planos</h2>
           <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
