@@ -206,7 +206,7 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
         };
     }, [setSupportNetworkProfessionals]);
 
-    const professionalsForAdmin = restProfessionals.length > 0 ? restProfessionals : supportNetworkProfessionals;
+    const professionalsForAdmin = supportNetworkProfessionals.length > 0 ? supportNetworkProfessionals : restProfessionals;
 
     const getStatusLabel = (prof: Professional) => {
         const todayStart = new Date(todayStr + "T00:00:00");
@@ -420,6 +420,7 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                                             <button
                                                 onClick={() => {
                                                     if (window.confirm(`Excluir ${prof.name}?`)) {
+                                                        setRestProfessionals((prev) => prev.filter((item) => item.id !== prof.id));
                                                         deleteProfessional(prof.id);
                                                     }
                                                 }}
