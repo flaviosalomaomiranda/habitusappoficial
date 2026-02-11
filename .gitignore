@@ -23,3 +23,6 @@ pnpm-debug.log*
 # local config
 .vscode/
 .idea/
+# firebase local
+.firebase/
+
