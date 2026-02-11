@@ -49,6 +49,14 @@ const isListedTier = (tier?: string) => tier === "verified" || tier === "listed"
 const isFavoritableTier = (tier?: string) => isProTier(tier) || tier === "exclusive";
 
 const normalizeText = (value?: string) => (value || "").trim().toLowerCase();
+const resolveUfSigla = (value: string, states: UF[]) => {
+    const normalized = normalizeText(value);
+    if (!normalized) return "";
+    const bySigla = states.find((s) => normalizeText(s.sigla) === normalized);
+    if (bySigla) return bySigla.sigla;
+    const byNome = states.find((s) => normalizeText(s.nome) === normalized);
+    return byNome?.sigla || value;
+};
 
 const ProfessionalCard: React.FC<{ professional: Professional, isFeatured?: boolean }> = ({ professional, isFeatured }) => {
     const { favoriteProfessionalIds, toggleFavoriteProfessional } = useAppContext();
@@ -180,6 +188,20 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
     }, []);
 
     useEffect(() => {
+        if (activeSupportNetworkProfessionals.length === 0 || states.length === 0) return;
+        if (selectedState && selectedCity) return;
+        const first = activeSupportNetworkProfessionals.find((p) => p.tier !== "master");
+        if (!first) return;
+        const ufSigla = resolveUfSigla(first.uf, states);
+        if (!selectedState && ufSigla) {
+            setSelectedState(ufSigla);
+        }
+        if (!selectedCity && first.cityId) {
+            setSelectedCity(String(first.cityId));
+        }
+    }, [activeSupportNetworkProfessionals, states, selectedState, selectedCity]);
+
+    useEffect(() => {
         if (!selectedState) {
             setCities([]);
             setSelectedCity('');
@@ -222,17 +244,17 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
         }
     };
     
-    const ufSiglaSelecionada = useMemo(() => {
-        const normalized = normalizeText(selectedState);
-        if (!normalized) return "";
-        const bySigla = states.find((s) => normalizeText(s.sigla) === normalized);
-        if (bySigla) return bySigla.sigla;
-        const byNome = states.find((s) => normalizeText(s.nome) === normalized);
-        return byNome?.sigla || selectedState;
-    }, [selectedState, states]);
+    const ufSiglaSelecionada = useMemo(() => resolveUfSigla(selectedState, states), [selectedState, states]);
 
     const strictFilteredProfessionals = useMemo(() => {
-        if (!selectedState || !selectedCity) return [];
+        if (!selectedState || !selectedCity) {
+            return activeSupportNetworkProfessionals.filter((p) => {
+                if (p.tier === "master") return false;
+                const matchesSpecialty = !selectedSpecialty || (p.specialties?.includes(selectedSpecialty) || p.specialty === selectedSpecialty);
+                const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+                return matchesSpecialty && matchesSearch;
+            });
+        }
 
         return activeSupportNetworkProfessionals.filter(p => {
             const matchesTier = p.tier !== 'master';
