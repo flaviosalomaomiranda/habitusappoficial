@@ -1,12 +1,9 @@
 
 import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { HABIT_ICONS } from '../constants';
-import { StarIcon } from './icons/HabitIcons';
 import { PencilIcon, PlusIcon } from './icons/MiscIcons';
 import { RoutineTemplate } from '../types';
 import AddOrEditTemplateModal from './AddOrEditTemplateModal';
-import { formatSchedule } from '../utils/dateUtils';
 
 interface ManageTemplatesModalProps {
   onClose: () => void;
@@ -14,7 +11,7 @@ interface ManageTemplatesModalProps {
 }
 
 const ManageTemplatesModal: React.FC<ManageTemplatesModalProps> = ({ onClose, embedded = false }) => {
-  const { routineTemplates, deleteRoutineTemplate } = useAppContext();
+  const { routineTemplates } = useAppContext();
   const [editingTemplate, setEditingTemplate] = useState<RoutineTemplate | null>(null);
   const [isAdding, setIsAdding] = useState(false);
 
@@ -47,29 +44,22 @@ const ManageTemplatesModal: React.FC<ManageTemplatesModalProps> = ({ onClose, em
 
         <div className="flex-grow overflow-y-auto pr-4 -mr-4 space-y-3">
            {routineTemplates.length > 0 ? routineTemplates.map(template => {
-                const Icon = HABIT_ICONS[template.icon];
                 return (
                     <div key={template.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border">
                         <div className="flex items-center gap-4">
-                            <Icon className="w-8 h-8 text-purple-500" />
+                            <div className="w-12 h-12 rounded-lg border bg-white overflow-hidden flex items-center justify-center">
+                                {template.imageUrl ? (
+                                  <img src={template.imageUrl} alt={template.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <span className="text-xs text-gray-400">Sem imagem</span>
+                                )}
+                            </div>
                             <div>
                                 <span className="text-lg font-medium">{template.name}</span>
-                                {template.schedule && <p className="text-sm text-gray-500">{formatSchedule(template.schedule)}</p>}
+                                <p className="text-sm text-gray-500">{template.isActive === false ? 'Inativo' : 'Ativo'}</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-4">
-                            <div className="text-right">
-                                {template.reward.type === 'STARS' ? (
-                                    <div className="flex items-center gap-1 text-yellow-500">
-                                    <span>+{template.reward.value}</span>
-                                    <StarIcon />
-                                    </div>
-                                ) : (
-                                    <div className="text-sm text-gray-600">
-                                    Atividade: <span className="font-semibold">{template.reward.activityName}</span>
-                                    </div>
-                                )}
-                            </div>
                             <button onClick={() => handleEdit(template)} className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-100 rounded-md">
                                 <PencilIcon className="w-5 h-5"/>
                             </button>

@@ -68,8 +68,10 @@ export interface Child {
 export interface RoutineTemplate {
   id: string;
   name: string;
-  icon: IconName;
-  reward: Reward;
+  imageUrl?: string;
+  isActive?: boolean;
+  icon?: IconName;
+  reward?: Reward;
   schedule?: HabitSchedule;
 }
 

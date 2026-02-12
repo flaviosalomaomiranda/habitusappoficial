@@ -15,8 +15,10 @@ interface ManageSupportNetworkModalProps {
 }
 
 const PROFILE_IMAGE_MAX_BYTES = 1_500_000;
-const PROFILE_IMAGE_WIDTH = 600;
-const PROFILE_IMAGE_HEIGHT = 600;
+const PROFILE_IMAGE_ALLOWED_SIZES = [
+    { width: 400, height: 400 },
+    { width: 600, height: 600 },
+];
 
 const GALLERY_IMAGE_MAX_BYTES = 2_000_000;
 const GALLERY_MIN_WIDTH = 800;
@@ -637,8 +639,11 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         try {
             setIsUploading(true);
             const { width, height } = await getImageDimensions(file);
-            if (width !== PROFILE_IMAGE_WIDTH || height !== PROFILE_IMAGE_HEIGHT) {
-                setUploadError(`A foto de perfil precisa ter ${PROFILE_IMAGE_WIDTH}x${PROFILE_IMAGE_HEIGHT}px.`);
+            const isAllowedSize = PROFILE_IMAGE_ALLOWED_SIZES.some(
+                (size) => width === size.width && height === size.height
+            );
+            if (!isAllowedSize) {
+                setUploadError("A foto de perfil precisa ter 400x400px ou 600x600px.");
                 return;
             }
             const id = professional?.id || crypto.randomUUID();
@@ -1074,7 +1079,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                         </div>
                         <div className="col-span-2 text-sm font-bold text-gray-700 mt-3">Materiais do anúncio</div>
                         <div className="col-span-2">
-                              <div className="text-xs font-semibold text-gray-500 mb-1">Foto de perfil (600x600px, até {formatBytes(PROFILE_IMAGE_MAX_BYTES)})</div>
+                              <div className="text-xs font-semibold text-gray-500 mb-1">Foto de perfil (400x400px ou 600x600px, até {formatBytes(PROFILE_IMAGE_MAX_BYTES)})</div>
                               <div className="flex flex-wrap items-center gap-3">
                                 <input
                                     type="file"

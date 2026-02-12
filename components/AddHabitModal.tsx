@@ -22,6 +22,7 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({
   onNoChildSelected,
 }) => {
   const { children, addHabitToMultipleChildren, routineTemplates } = useAppContext();
+  const activeTemplates = routineTemplates.filter((template) => template.isActive !== false);
   const [name, setName] = useState('');
   const [selectedIcon, setSelectedIcon] = useState<IconName>('Sparkles');
   const [scheduleMode, setScheduleMode] = useState<'recurring' | 'once'>('recurring');
@@ -183,12 +184,21 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({
             <label className="block text-gray-700 font-semibold mb-2">Comece com um modelo</label>
             <p className="text-xs text-gray-500 mb-2">Modelos (selecione um ou mais). Todos serao diarios e valem +1 estrela.</p>
             <div className="max-h-44 overflow-y-auto border rounded-lg p-2 space-y-2">
-              {routineTemplates.length === 0 ? (
+              {activeTemplates.length === 0 ? (
                 <p className="text-sm text-gray-500 p-2">Nenhum modelo cadastrado pelo admin.</p>
               ) : (
-                routineTemplates.map((template) => (
-                  <label key={template.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg cursor-pointer">
-                    <span className="text-sm font-medium">{template.name}</span>
+                activeTemplates.map((template) => (
+                  <label key={template.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg cursor-pointer gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-lg border bg-white overflow-hidden flex items-center justify-center shrink-0">
+                        {template.imageUrl ? (
+                          <img src={template.imageUrl} alt={template.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] text-gray-400">Sem</span>
+                        )}
+                      </div>
+                      <span className="text-sm font-medium truncate">{template.name}</span>
+                    </div>
                     <input
                       type="checkbox"
                       className="h-5 w-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"

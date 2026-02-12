@@ -541,6 +541,8 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
           return {
             id: d.id,
             name: data.name,
+            imageUrl: data.imageUrl,
+            isActive: data.isActive ?? true,
             icon: data.icon,
             reward: data.reward,
             schedule: data.schedule,
