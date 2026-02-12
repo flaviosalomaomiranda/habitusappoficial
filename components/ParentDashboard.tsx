@@ -176,7 +176,7 @@ const SupportSpotlightCard: React.FC<{
                         ? 'bg-white/20 text-white'
                         : 'bg-purple-100 text-purple-800'
             }`}>
-                {type === 'master' ? 'MASTER' : type === 'pro' ? 'PRO' : 'EXCLUSIVO'}
+                {type === 'master' ? 'MASTER' : type === 'pro' ? 'PRO' : 'PREMIUM'}
             </div>
             
             <div className="flex gap-3 items-center">
@@ -478,7 +478,7 @@ const SupportFavoriteVerifiedCard: React.FC<{ prof: Professional; onToggleFavori
 
 
 const ParentDashboard: React.FC<ParentDashboardProps> = ({ onEnterTvMode }) => {
-  const { settings, children, deleteHabit, skipHabitForDate, getHabitsForChildOnDate, toggleHabitCompletion, rejectHabitCompletion, redeemedRewards, toggleRewardDelivery, getFavoriteProfessionals, toggleFavoriteProfessional, supportNetworkProfessionals, activeSupportNetworkProfessionals, isFamilyOwner, canManageMembers, canEditChildren, canEditHabits, canMarkHabits, isManager } = useAppContext();
+  const { settings, supportNetworkDefaultMasters, children, deleteHabit, skipHabitForDate, getHabitsForChildOnDate, toggleHabitCompletion, rejectHabitCompletion, redeemedRewards, toggleRewardDelivery, getFavoriteProfessionals, toggleFavoriteProfessional, supportNetworkProfessionals, activeSupportNetworkProfessionals, isFamilyOwner, canManageMembers, canEditChildren, canEditHabits, canMarkHabits, isManager } = useAppContext();
 
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
 
@@ -531,6 +531,18 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
             : null;
         if (activeCityMaster) return activeCityMaster;
 
+        const ufDefaultId = familyLocation?.uf ? supportNetworkDefaultMasters.byUf?.[familyLocation.uf] : null;
+        if (ufDefaultId) {
+            const fallbackByUf = supportNetworkProfessionals.find((p) => p.id === ufDefaultId && p.isActive !== false);
+            if (fallbackByUf) return fallbackByUf;
+        }
+
+        const globalDefaultId = supportNetworkDefaultMasters.globalProfessionalId;
+        if (globalDefaultId) {
+            const fallbackGlobal = supportNetworkProfessionals.find((p) => p.id === globalDefaultId && p.isActive !== false);
+            if (fallbackGlobal) return fallbackGlobal;
+        }
+
         const defaultMasterId = settings.defaultMasterProfessionalId;
         if (defaultMasterId) {
             const fallbackById = supportNetworkProfessionals.find(
@@ -541,7 +553,7 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
 
         const anyActiveMaster = activeSupportNetworkProfessionals.find((p) => p.tier === "master");
         return anyActiveMaster ?? null;
-    }, [activeSupportNetworkProfessionals, familyLocation, settings.defaultMasterProfessionalId, supportNetworkProfessionals]);
+    }, [activeSupportNetworkProfessionals, familyLocation, settings.defaultMasterProfessionalId, supportNetworkDefaultMasters, supportNetworkProfessionals]);
 
     const cityProProfessionals = useMemo(() => {
         return activeSupportNetworkProfessionals

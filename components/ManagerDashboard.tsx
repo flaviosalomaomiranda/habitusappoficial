@@ -245,7 +245,7 @@ const ManagerDashboard: React.FC = () => {
                 <div className="text-xs text-gray-500">{pendingPayments.length} pendentes</div>
               </div>
               <div className="rounded-lg border bg-white p-3">
-                <div className="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Exclusivos</div>
+                <div className="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Premium</div>
                 <div className="text-xl font-bold text-gray-800">{exclusives.length}</div>
                 <div className="text-xs text-gray-500">{masters.length} masters</div>
               </div>

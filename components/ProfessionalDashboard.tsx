@@ -10,9 +10,9 @@ interface ProfessionalDashboardProps {
 
 const getPlanLabel = (tier?: string) => {
   if (tier === "master") return "MASTER";
-  if (tier === "exclusive") return "EXCLUSIVO";
+  if (tier === "exclusive") return "PREMIUM";
   if (tier === "top" || tier === "pro") return "PRO";
-  return "LISTADO";
+  return "LISTA VIP";
 };
 
 const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ professional }) => {

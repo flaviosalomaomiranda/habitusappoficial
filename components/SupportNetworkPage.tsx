@@ -76,7 +76,7 @@ const ProfessionalCard: React.FC<{ professional: Professional, isFeatured?: bool
                 <div className={`absolute -top-3 -right-3 font-black text-[10px] px-3 py-1.5 rounded-full shadow-md transform rotate-6 ${
                     professional.tier === 'exclusive' ? 'bg-indigo-600 text-white' : 'bg-amber-400 text-amber-900'
                 }`}>
-                    {professional.tier === 'exclusive' ? '⭐ EXCLUSIVO' : '⭐ PRO'}
+                    {professional.tier === 'exclusive' ? '⭐ PREMIUM' : '⭐ PRO'}
                 </div>
             )}
             {isFeatured && (
@@ -413,10 +413,10 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
                     <input type="text" placeholder="Buscar por nome..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full px-3 py-2 mt-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"/>
 
                     <div className="mt-6 space-y-6">
-                        {/* Seção Exclusiva */}
+                        {/* Seção Premium */}
                         {exclusiveProfessional && (
                             <section>
-                                <h2 className="text-xl font-bold text-indigo-700 border-b-2 border-indigo-200 pb-1 mb-3">💎 Especialista Exclusivo</h2>
+                                <h2 className="text-xl font-bold text-indigo-700 border-b-2 border-indigo-200 pb-1 mb-3">💎 Especialista Premium</h2>
                                 <ProfessionalCard professional={exclusiveProfessional} />
                             </section>
                         )}
@@ -434,9 +434,9 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
                             </div>
                         </section>
                         
-                        {/* LISTADO Section */}
+                        {/* LISTA VIP Section */}
                         <section>
-                            <h2 className="text-xl font-bold text-green-700 border-b-2 border-green-200 pb-1 mb-3">✅ Listados</h2>
+                            <h2 className="text-xl font-bold text-green-700 border-b-2 border-green-200 pb-1 mb-3">✅ Lista Vip</h2>
                              <div className="space-y-3">
                                 {listedProfessionals.length > 0 ? (
                                     listedProfessionals.map(p => <ProfessionalCard key={p.id} professional={p} />)
@@ -450,7 +450,7 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
             )}
             
             <footer className="mt-8 text-center text-xs text-gray-400 space-y-2">
-                <p>Os níveis "PRO" e "EXCLUSIVO" são espaços patrocinados. O selo "Registro verificado" indica dados conferidos.</p>
+                <p>Os níveis "PRO" e "PREMIUM" são espaços patrocinados. O selo "Registro verificado" indica dados conferidos.</p>
                 <p>A Rede de Serviços Profissionais é um diretório. Não oferecemos diagnóstico nem orientação médica.</p>
             </footer>
         </div>

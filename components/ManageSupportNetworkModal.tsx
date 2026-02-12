@@ -126,9 +126,9 @@ const addMonthsToIsoDate = (dateStr: string, months: number) => {
 
 const getTierLabel = (tier?: string) => {
     if (tier === "master") return "MASTER";
-    if (tier === "exclusive") return "EXCLUSIVO";
+    if (tier === "exclusive") return "PREMIUM";
     if (tier === "top") return "PRO";
-    return "LISTADO";
+    return "LISTA VIP";
 };
 
 const readFirestorePrimitive = (value: any): any => {
@@ -439,8 +439,8 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                         <option value="">Filtrar por Categoria (todas)</option>
                         <option value="master">MASTER</option>
                         <option value="top">PRO</option>
-                        <option value="exclusive">EXCLUSIVO</option>
-                        <option value="verified">LISTADO</option>
+                        <option value="exclusive">PREMIUM</option>
+                        <option value="verified">LISTA VIP</option>
                     </select>
                 </div>
 
@@ -1034,10 +1034,10 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
 
         if (formState.tier === "exclusive") {
             if (exclusiveRoutines.length === 0) {
-                return alert("Informe pelo menos 1 rotina personalizada para o Exclusivo.");
+                return alert("Informe pelo menos 1 rotina personalizada para o Premium.");
             }
             if (exclusiveRoutines.length > 10) {
-                return alert("O Exclusivo pode ter no máximo 10 rotinas personalizadas.");
+                return alert("O Premium pode ter no máximo 10 rotinas personalizadas.");
             }
             if (exclusiveRoutines.some((item) => item.diamonds <= 0)) {
                 return alert("Cada rotina personalizada deve ter diamantes maiores que zero.");
@@ -1045,7 +1045,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         }
 
         if (formState.tier === "exclusive" && spotlightKeywords.length === 0) {
-            return alert("Informe palavras-chave para o Exclusivo.");
+            return alert("Informe palavras-chave para o Premium.");
         }
 
         const data = {
@@ -1064,7 +1064,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         // Regras de Unicidade
         if (data.tier === 'master') {
             const existing = supportNetworkProfessionals.find(p => p.tier === 'master' && p.cityId === data.cityId && p.id !== data.id && p.isActive);
-            if (existing && !window.confirm(`Já existe um Master em ${data.city} (${existing.name}). Deseja rebaixar o atual para Listado e assumir como Master?`)) return;
+            if (existing && !window.confirm(`Já existe um Master em ${data.city} (${existing.name}). Deseja rebaixar o atual para Lista Vip e assumir como Master?`)) return;
             if (existing) {
                 updateProfessional({ ...existing, tier: 'verified' });
             }
@@ -1087,7 +1087,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                             : [];
                     return `${c.name} (${list.join(", ")})`;
                 }).join("\n");
-                if (!window.confirm(`Já existe Exclusivo para esta(s) especialidade(s) em ${data.city}:\n${names}\n\nDeseja substituir?`)) return;
+                if (!window.confirm(`Já existe Premium para esta(s) especialidade(s) em ${data.city}:\n${names}\n\nDeseja substituir?`)) return;
                 conflicts.forEach(existing => updateProfessional({ ...existing, tier: 'verified' }));
             }
         }
@@ -1233,9 +1233,9 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                                 .map(c => <option key={c.id} value={String(c.id)}>{c.nome}</option>)}
                         </select>
                         <select name="tier" value={formState.tier || 'verified'} onChange={handleChange} className="p-2 border rounded bg-white font-bold text-purple-700 col-span-2">
-                            <option value="verified">Listado</option>
+                            <option value="verified">Lista Vip</option>
                             <option value="top">Pro (Rodízio)</option>
-                            <option value="exclusive">Exclusivo (1 por Especialidade)</option>
+                            <option value="exclusive">Premium (1 por Especialidade)</option>
                             <option value="master">Master (1 por Cidade)</option>
                         </select>
                         <div>
@@ -1433,7 +1433,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                                     placeholder={"Rotina da manhã | 10\nRotina de estudos | 15"}
                                     className="p-2 border rounded w-full h-28"
                                 />
-                                <p className="text-[11px] text-gray-500 mt-1">Cada linha representa uma rotina personalizada do profissional EXCLUSIVO.</p>
+                                <p className="text-[11px] text-gray-500 mt-1">Cada linha representa uma rotina personalizada do profissional PREMIUM.</p>
                             </div>
                         </div>
                     )}

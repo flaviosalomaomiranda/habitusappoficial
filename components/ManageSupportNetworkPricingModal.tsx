@@ -8,9 +8,9 @@ interface ManageSupportNetworkPricingModalProps {
 }
 
 const tierLabels: Record<ProfessionalTier, string> = {
-  verified: "Listado",
+  verified: "Lista Vip",
   top: "Pro (Rodízio)",
-  exclusive: "Exclusivo (1 por Especialidade)",
+  exclusive: "Premium (1 por Especialidade)",
   master: "Master (1 por Cidade)",
 };
 
@@ -24,7 +24,9 @@ const emptyPlans: SupportNetworkPricing["plans"] = {
 const ManageSupportNetworkPricingModal: React.FC<ManageSupportNetworkPricingModalProps> = ({ onClose, embedded = false }) => {
   const {
     supportNetworkPricing,
+    supportNetworkDefaultMasters,
     updateSupportNetworkPricing,
+    updateSupportNetworkDefaultMasters,
     supportNetworkProfessionals,
     settings,
     setDefaultMasterProfessionalId,
@@ -34,6 +36,12 @@ const ManageSupportNetworkPricingModal: React.FC<ManageSupportNetworkPricingModa
     settings.defaultMasterProfessionalId ?? ""
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [globalDefaultMasterId, setGlobalDefaultMasterId] = useState<string>(
+    supportNetworkDefaultMasters.globalProfessionalId ?? ""
+  );
+  const [byUfDefaults, setByUfDefaults] = useState<Record<string, string>>(supportNetworkDefaultMasters.byUf || {});
+  const [selectedUfForDefault, setSelectedUfForDefault] = useState<string>("");
+  const [selectedMasterForUf, setSelectedMasterForUf] = useState<string>("");
 
   useEffect(() => {
     setPlans(supportNetworkPricing?.plans || emptyPlans);
@@ -43,11 +51,24 @@ const ManageSupportNetworkPricingModal: React.FC<ManageSupportNetworkPricingModa
     setDefaultMasterProfessionalIdState(settings.defaultMasterProfessionalId ?? "");
   }, [settings.defaultMasterProfessionalId]);
 
+  useEffect(() => {
+    setGlobalDefaultMasterId(supportNetworkDefaultMasters.globalProfessionalId ?? "");
+    setByUfDefaults(supportNetworkDefaultMasters.byUf || {});
+  }, [supportNetworkDefaultMasters]);
+
   const defaultMasterOptions = useMemo(() => {
     return supportNetworkProfessionals
       .filter((p) => p.isActive !== false)
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [supportNetworkProfessionals]);
+  const availableUfs = useMemo(
+    () => Array.from(new Set(defaultMasterOptions.map((p) => p.uf).filter(Boolean))).sort(),
+    [defaultMasterOptions]
+  );
+  const ufMasterOptions = useMemo(
+    () => defaultMasterOptions.filter((p) => p.uf === selectedUfForDefault),
+    [defaultMasterOptions, selectedUfForDefault]
+  );
 
   const handleChange = (tier: ProfessionalTier, field: "monthly" | "annual", value: string) => {
     const numeric = value === "" ? 0 : Number(value);
@@ -62,6 +83,10 @@ const ManageSupportNetworkPricingModal: React.FC<ManageSupportNetworkPricingModa
     try {
       await updateSupportNetworkPricing(plans);
       await setDefaultMasterProfessionalId(defaultMasterProfessionalId || null);
+      await updateSupportNetworkDefaultMasters({
+        globalProfessionalId: globalDefaultMasterId || null,
+        byUf: byUfDefaults,
+      });
       alert("Precificação atualizada.");
       onClose();
     } catch (err) {
@@ -86,7 +111,7 @@ const ManageSupportNetworkPricingModal: React.FC<ManageSupportNetworkPricingModa
           Esses valores ficam disponíveis apenas para Admin e são usados para preencher automaticamente as fichas de profissionais.
         </div>
         <div className="mb-4">
-          <label className="block text-sm font-semibold text-gray-700 mb-2">MASTER default (quando não houver MASTER ativo)</label>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">MASTER default da família (legado)</label>
           <select
             value={defaultMasterProfessionalId}
             onChange={(e) => setDefaultMasterProfessionalIdState(e.target.value)}
@@ -99,6 +124,87 @@ const ManageSupportNetworkPricingModal: React.FC<ManageSupportNetworkPricingModa
               </option>
             ))}
           </select>
+        </div>
+        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50/40 p-3">
+          <label className="block text-sm font-semibold text-gray-700 mb-2">MASTER default global (todos estados/cidades)</label>
+          <select
+            value={globalDefaultMasterId}
+            onChange={(e) => setGlobalDefaultMasterId(e.target.value)}
+            className="w-full p-2 border rounded bg-white"
+          >
+            <option value="">Sem MASTER default global</option>
+            {defaultMasterOptions.map((prof) => (
+              <option key={`global-${prof.id}`} value={prof.id}>
+                {prof.name} - {prof.city}/{prof.uf}
+              </option>
+            ))}
+          </select>
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">UF</label>
+              <select value={selectedUfForDefault} onChange={(e) => setSelectedUfForDefault(e.target.value)} className="w-full p-2 border rounded bg-white">
+                <option value="">Selecione UF</option>
+                {availableUfs.map((uf) => (
+                  <option key={uf} value={uf}>{uf}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">MASTER default da UF</label>
+              <select value={selectedMasterForUf} onChange={(e) => setSelectedMasterForUf(e.target.value)} disabled={!selectedUfForDefault} className="w-full p-2 border rounded bg-white disabled:bg-gray-100">
+                <option value="">{selectedUfForDefault ? "Selecione profissional" : "Escolha UF"}</option>
+                {ufMasterOptions.map((prof) => (
+                  <option key={`uf-${prof.id}`} value={prof.id}>
+                    {prof.name} - {prof.city}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              disabled={!selectedUfForDefault}
+              onClick={() => {
+                if (!selectedUfForDefault) return;
+                setByUfDefaults((prev) => {
+                  const next = { ...prev };
+                  if (!selectedMasterForUf) delete next[selectedUfForDefault];
+                  else next[selectedUfForDefault] = selectedMasterForUf;
+                  return next;
+                });
+              }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-60"
+            >
+              Aplicar UF
+            </button>
+          </div>
+          <div className="mt-3">
+            <div className="text-xs font-semibold text-gray-600 mb-1">Defaults por estado</div>
+            {Object.keys(byUfDefaults).length === 0 ? (
+              <p className="text-xs text-gray-500">Nenhum estado configurado.</p>
+            ) : (
+              <ul className="space-y-1 text-xs">
+                {Object.entries(byUfDefaults).map(([uf, profId]) => {
+                  const prof = defaultMasterOptions.find((p) => p.id === profId);
+                  return (
+                    <li key={`map-${uf}`} className="flex items-center justify-between gap-2 border rounded px-2 py-1 bg-white">
+                      <span><strong>{uf}</strong>: {prof ? `${prof.name} (${prof.city})` : profId}</span>
+                      <button
+                        type="button"
+                        onClick={() => setByUfDefaults((prev) => {
+                          const next = { ...prev };
+                          delete next[uf];
+                          return next;
+                        })}
+                        className="text-red-600 font-semibold"
+                      >
+                        remover
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         </div>
         <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
           Observação: o plano Master é válido por 14 dias. O valor informado é referente a 14 dias. No pacote anual, o total corresponde a 20x o valor praticado.

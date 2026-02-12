@@ -148,6 +148,8 @@ interface AppContextType {
   getFavoriteProfessionals: () => Professional[];
   supportNetworkPricing: SupportNetworkPricing;
   updateSupportNetworkPricing: (plans: SupportNetworkPricing["plans"]) => Promise<void>;
+  supportNetworkDefaultMasters: { globalProfessionalId: string | null; byUf: Record<string, string> };
+  updateSupportNetworkDefaultMasters: (payload: { globalProfessionalId: string | null; byUf: Record<string, string> }) => Promise<void>;
 
   isFamilyOwner: boolean;
   canManageMembers: boolean;
@@ -359,6 +361,13 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       exclusive: { monthly: 0, annual: 0 },
       master: { monthly: 0, annual: 0 },
     },
+  });
+  const [supportNetworkDefaultMasters, setSupportNetworkDefaultMasters] = useState<{
+    globalProfessionalId: string | null;
+    byUf: Record<string, string>;
+  }>({
+    globalProfessionalId: null,
+    byUf: {},
   });
   const latestSupportNetworkRef = useRef<Professional[]>(supportNetworkProfessionals);
 
@@ -662,6 +671,22 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     };
   }, []);
 
+  useEffect(() => {
+    const defaultsRef = doc(db, "supportNetworkSettings", "defaultMasters");
+    const unsub = onSnapshot(defaultsRef, (snap) => {
+      if (!snap.exists()) {
+        setSupportNetworkDefaultMasters({ globalProfessionalId: null, byUf: {} });
+        return;
+      }
+      const data = snap.data() as any;
+      setSupportNetworkDefaultMasters({
+        globalProfessionalId: data?.globalProfessionalId ?? null,
+        byUf: (data?.byUf && typeof data.byUf === "object") ? data.byUf : {},
+      });
+    });
+    return () => unsub();
+  }, []);
+
   /** ? Helper pra salvar child (merge) */
   const saveChild = (child: Child) => {
     if (!familyId) return;
@@ -827,6 +852,19 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       doc(db, "supportNetworkSettings", "pricing"),
       {
         plans,
+        updatedAt: serverTimestamp(),
+        updatedByEmail: auth.currentUser?.email ?? null,
+      },
+      { merge: true }
+    );
+  };
+
+  const updateSupportNetworkDefaultMasters = async (payload: { globalProfessionalId: string | null; byUf: Record<string, string> }) => {
+    await setDoc(
+      doc(db, "supportNetworkSettings", "defaultMasters"),
+      {
+        globalProfessionalId: payload.globalProfessionalId ?? null,
+        byUf: payload.byUf || {},
         updatedAt: serverTimestamp(),
         updatedByEmail: auth.currentUser?.email ?? null,
       },
@@ -1427,6 +1465,8 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     getFavoriteProfessionals,
     supportNetworkPricing,
     updateSupportNetworkPricing,
+    supportNetworkDefaultMasters,
+    updateSupportNetworkDefaultMasters,
 
     isFamilyOwner,
     canManageMembers,
