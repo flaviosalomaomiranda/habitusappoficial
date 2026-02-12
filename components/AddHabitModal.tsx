@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { HABIT_CATEGORIES, HABIT_ICONS } from '../constants';
-import { HabitCategory, IconName, RewardType, Habit, ScheduleType, HabitSchedule } from '../types';
+import { HABIT_ICONS } from '../constants';
+import { IconName, RewardType, Habit, ScheduleType, HabitSchedule } from '../types';
 import { StarIcon } from './icons/HabitIcons';
 
 interface AddHabitModalProps {
@@ -23,7 +23,7 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({
 }) => {
   const { children, addHabitToMultipleChildren, routineTemplates } = useAppContext();
   const [name, setName] = useState('');
-  const [selectedIcon, setSelectedIcon] = useState<IconName>('Book');
+  const [selectedIcon, setSelectedIcon] = useState<IconName>('Sparkles');
   const [scheduleMode, setScheduleMode] = useState<'recurring' | 'once'>('recurring');
   const [eventDate, setEventDate] = useState(viewedDate);
   const [startDate, setStartDate] = useState(viewedDate);
@@ -34,10 +34,9 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({
   const [rewardType, setRewardType] = useState<RewardType>(RewardType.STARS);
   const [starValue, setStarValue] = useState(1);
   const [activityName, setActivityName] = useState('');
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('custom');
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
   const [selectedChildIds, setSelectedChildIds] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
-  const [category, setCategory] = useState<HabitCategory | ''>('');
 
   useEffect(() => {
     if (selectedChildId) {
@@ -47,46 +46,12 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({
     }
   }, [selectedChildId]);
 
-  useEffect(() => {
-    if (selectedTemplateId === 'custom') {
-      setName('');
-      setSelectedIcon('Book');
-      setRewardType(RewardType.STARS);
-      setStarValue(1);
-      setActivityName('');
-      setScheduleMode('recurring');
-      setScheduleType('DAILY');
-      setWeeklyDays([]);
-      setDayOfMonth(new Date(viewedDate + 'T00:00:00').getDate());
-      setEventDate(viewedDate);
-      setStartDate(viewedDate);
-      setCategory('');
-      return;
-    }
-
-    const template = routineTemplates.find((t) => t.id === selectedTemplateId);
-    if (!template) return;
-
-    setName(template.name);
-    setSelectedIcon(template.icon);
-    setRewardType(template.reward.type);
-    if (template.reward.type === RewardType.STARS) {
-      setStarValue(template.reward.value);
-      setActivityName('');
-    } else {
-      setActivityName(template.reward.activityName || '');
-      setStarValue(1);
-    }
-
-    if (template.schedule) {
-      setScheduleMode(template.schedule.type === 'ONCE' ? 'once' : 'recurring');
-      setScheduleType(template.schedule.type === 'ONCE' ? 'DAILY' : template.schedule.type);
-      setWeeklyDays(template.schedule.days || []);
-      setDayOfMonth(template.schedule.dayOfMonth || new Date(viewedDate + 'T00:00:00').getDate());
-      setEventDate(template.schedule.date || viewedDate);
-    }
-    setCategory('');
-  }, [selectedTemplateId, routineTemplates, viewedDate]);
+  const toggleTemplateSelection = (templateId: string) => {
+    setSelectedTemplateIds((prev) =>
+      prev.includes(templateId) ? prev.filter((id) => id !== templateId) : [...prev, templateId]
+    );
+    if (formError) setFormError(null);
+  };
 
   const daysOfWeek = [
     { label: 'D', value: 0 },
@@ -116,9 +81,44 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({
       const trimmedName = name.trim();
       const trimmedActivity = activityName.trim();
 
-      if (!trimmedName || selectedChildIds.length === 0) {
+      if (selectedChildIds.length === 0) {
         onNoChildSelected();
-        setFormError('Selecione pelo menos uma pessoa e um nome.');
+        setFormError('Selecione pelo menos uma pessoa.');
+        return;
+      }
+
+      if (selectedTemplateIds.length > 0) {
+        let addedCount = 0;
+        const addedChildren = new Set<string>();
+
+        selectedTemplateIds.forEach((templateId) => {
+          const template = routineTemplates.find((t) => t.id === templateId);
+          if (!template) return;
+
+          const templateHabitData: Omit<Habit, 'id' | 'completions'> = {
+            name: template.name.trim(),
+            icon: 'Sparkles',
+            schedule: { type: 'DAILY' },
+            startDate: viewedDate,
+            reward: { type: RewardType.STARS, value: 1 },
+          };
+
+          const addedToIds = addHabitToMultipleChildren(selectedChildIds, templateHabitData);
+          if (addedToIds.length > 0) {
+            addedCount += addedToIds.length;
+            addedToIds.forEach((id) => addedChildren.add(id));
+          }
+        });
+
+        if (addedCount > 0) onHabitAdded(Array.from(addedChildren));
+        else onHabitExists();
+        setFormError(null);
+        onClose();
+        return;
+      }
+
+      if (!trimmedName) {
+        setFormError('Informe o nome da rotina/tarefa/evento.');
         return;
       }
 
@@ -150,7 +150,6 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({
       const habitData: Omit<Habit, 'id' | 'completions'> = {
         name: trimmedName,
         icon: selectedIcon,
-        category: category || undefined,
         schedule,
         startDate: habitStartDate,
         reward:
@@ -178,25 +177,32 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-lg m-4" style={{ maxHeight: '95vh', overflowY: 'auto' }}>
-        <h2 className="text-2xl font-bold mb-6">Adicionar habito ou evento</h2>
+        <h2 className="text-2xl font-bold mb-6">Adicionar Rotina / Tarefa</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="template-select" className="block text-gray-700 font-semibold mb-2">Comece com um modelo (opcional)</label>
-            <select
-              id="template-select"
-              value={selectedTemplateId}
-              onChange={(e) => setSelectedTemplateId(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
-            >
-              <option value="custom">-- Criar personalizado --</option>
-              {routineTemplates.map((template) => (
-                <option key={template.id} value={template.id}>{template.name}</option>
-              ))}
-            </select>
+            <label className="block text-gray-700 font-semibold mb-2">Comece com um modelo</label>
+            <p className="text-xs text-gray-500 mb-2">Modelos (selecione um ou mais). Todos serao diarios e valem +1 estrela.</p>
+            <div className="max-h-44 overflow-y-auto border rounded-lg p-2 space-y-2">
+              {routineTemplates.length === 0 ? (
+                <p className="text-sm text-gray-500 p-2">Nenhum modelo cadastrado pelo admin.</p>
+              ) : (
+                routineTemplates.map((template) => (
+                  <label key={template.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg cursor-pointer">
+                    <span className="text-sm font-medium">{template.name}</span>
+                    <input
+                      type="checkbox"
+                      className="h-5 w-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      checked={selectedTemplateIds.includes(template.id)}
+                      onChange={() => toggleTemplateSelection(template.id)}
+                    />
+                  </label>
+                ))
+              )}
+            </div>
           </div>
           <hr />
           <div>
-            <label htmlFor="habit-name" className="block text-gray-700 font-semibold mb-2">Nome do habito/evento</label>
+            <label htmlFor="habit-name" className="block text-gray-700 font-semibold mb-2">Rotina/Tarefa/Evento (personalizado)</label>
             <input
               id="habit-name"
               type="text"
@@ -264,20 +270,6 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({
                 );
               })}
             </div>
-          </div>
-
-          <div>
-            <label className="block text-gray-700 font-semibold mb-2">Categoria (opcional)</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value as HabitCategory)}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
-            >
-              <option value="">Sem categoria</option>
-              {HABIT_CATEGORIES.map((item) => (
-                <option key={item} value={item}>{item}</option>
-              ))}
-            </select>
           </div>
 
           <div>
