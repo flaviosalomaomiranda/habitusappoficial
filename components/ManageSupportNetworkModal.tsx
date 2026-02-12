@@ -23,10 +23,6 @@ const PROFILE_IMAGE_ALLOWED_SIZES = [
     { width: 600, height: 600 },
 ];
 
-const GALLERY_IMAGE_MAX_BYTES = 2_000_000;
-const GALLERY_MIN_WIDTH = 800;
-const GALLERY_MIN_HEIGHT = 600;
-
 const MASTER_VIDEO_MAX_BYTES = 20_000_000;
 const MASTER_VIDEO_MAX_SECONDS = 16;
 const MASTER_VIDEO_WIDTH = 1920;
@@ -112,6 +108,20 @@ const formatPhone = (value: string) => {
 const formatCep = (value: string) => {
     const digits = onlyDigits(value).slice(0, 8);
     return digits.replace(/(\d{5})(\d)/, "$1-$2");
+};
+
+const buildMapsLinkFromAddress = (address: {
+    street?: string;
+    number?: string;
+    neighborhood?: string;
+    city?: string;
+    uf?: string;
+}) => {
+    const parts = [address.street, address.number, address.neighborhood, address.city, address.uf]
+        .map((item) => (item || "").trim())
+        .filter(Boolean);
+    if (parts.length === 0) return "";
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parts.join(", "))}`;
 };
 
 const addMonthsToIsoDate = (dateStr: string, months: number) => {
@@ -786,6 +796,25 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         }
     }, [formState.tier, formState.validFrom, formState.validTo, todayStr]);
 
+    useEffect(() => {
+        const generated = buildMapsLinkFromAddress({
+            street: formState.addressStreet,
+            number: formState.addressNumber,
+            neighborhood: formState.addressNeighborhood,
+            city: formState.addressCity,
+            uf: formState.addressUf,
+        });
+        if (!generated) return;
+        if (formState.contacts?.maps === generated) return;
+        setFormState((prev) => ({ ...prev, contacts: { ...prev.contacts, maps: generated } }));
+    }, [
+        formState.addressStreet,
+        formState.addressNumber,
+        formState.addressNeighborhood,
+        formState.addressCity,
+        formState.addressUf,
+    ]);
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
         const checked = (e.target as HTMLInputElement).checked;
@@ -869,39 +898,6 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         }
     };
 
-    const handleGalleryUpload = async (files: FileList | null) => {
-        if (!files || files.length === 0) return;
-        setUploadError(null);
-        const allowed = ['image/jpeg', 'image/png', 'image/webp'];
-        try {
-            setIsUploading(true);
-            const uploadedUrls: string[] = [];
-            const id = professional?.id || crypto.randomUUID();
-            for (const file of Array.from(files)) {
-                if (!allowed.includes(file.type)) {
-                    setUploadError('Formato inválido. Use JPG, PNG ou WebP.');
-                    return;
-                }
-                if (file.size > GALLERY_IMAGE_MAX_BYTES) {
-                    setUploadError(`Arquivo grande demais. Máximo ${formatBytes(GALLERY_IMAGE_MAX_BYTES)}.`);
-                    return;
-                }
-                const { width, height } = await getImageDimensions(file);
-                if (width < GALLERY_MIN_WIDTH || height < GALLERY_MIN_HEIGHT) {
-                    setUploadError(`A galeria precisa ter no mínimo ${GALLERY_MIN_WIDTH}x${GALLERY_MIN_HEIGHT}px.`);
-                    return;
-                }
-                const url = await uploadImage(file, `support-network/gallery/${id}-${Date.now()}-${file.name}`);
-                uploadedUrls.push(url);
-            }
-            setFormState(p => ({ ...p, galleryUrls: [...(p.galleryUrls || []), ...uploadedUrls] }));
-        } catch (err) {
-            setUploadError('Falha ao enviar imagens da galeria.');
-        } finally {
-            setIsUploading(false);
-        }
-    };
-
     const handleMasterVideoUpload = async (file: File) => {
         setUploadError(null);
         if (!file) return;
@@ -934,8 +930,40 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         }
     };
 
-    const removeGalleryImage = (url: string) => {
-        setFormState(p => ({ ...p, galleryUrls: (p.galleryUrls || []).filter(u => u !== url) }));
+    const fetchAddressFromCep = async (cepFormatted: string) => {
+        const cep = onlyDigits(cepFormatted);
+        if (cep.length !== 8) return;
+        try {
+            const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+            if (!response.ok) return;
+            const data = await response.json();
+            if (data?.erro) return;
+            setFormState((prev) => {
+                const next = {
+                    ...prev,
+                    addressStreet: data.logradouro || prev.addressStreet || "",
+                    addressNeighborhood: data.bairro || prev.addressNeighborhood || "",
+                    addressCity: data.localidade || prev.addressCity || "",
+                    addressUf: data.uf || prev.addressUf || "",
+                };
+                const generatedMaps = buildMapsLinkFromAddress({
+                    street: next.addressStreet,
+                    number: next.addressNumber,
+                    neighborhood: next.addressNeighborhood,
+                    city: next.addressCity,
+                    uf: next.addressUf,
+                });
+                return {
+                    ...next,
+                    contacts: {
+                        ...next.contacts,
+                        maps: generatedMaps || next.contacts?.maps || "",
+                    },
+                };
+            });
+        } catch {
+            // falha silenciosa: usuário pode preencher manualmente
+        }
     };
     
     const handleSubmit = (e: React.FormEvent) => {
@@ -1001,12 +1029,6 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         const specialties = Array.from(new Set([...baseSpecialties, ...otherSpecialties]));
         if (specialties.length === 0) return alert("Selecione pelo menos 1 especialidade.");
 
-        const galleryUrls = formState.galleryUrls || [];
-        if (galleryUrls.length > 0 && galleryUrls.length < 3) {
-            const proceed = window.confirm("Recomendamos pelo menos 3 fotos na galeria. Deseja continuar mesmo assim?");
-            if (!proceed) return;
-        }
-
         const spotlightKeywords = keywordText
             .split(",")
             .map((kw) => kw.trim().toLowerCase())
@@ -1051,7 +1073,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         const data = {
             ...formState,
             city: cityObj.nome,
-            galleryUrls,
+            galleryUrls: [],
             specialties,
             specialty: specialties[0],
             highlights,
@@ -1146,19 +1168,20 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                         )}
 
                         <div className="col-span-2 text-sm font-bold text-gray-700 mt-3">Endereço do estabelecimento</div>
+                        <input
+                            name="addressCep"
+                            value={formState.addressCep || ''}
+                            onChange={(e) => setFormState(p => ({ ...p, addressCep: formatCep(e.target.value) }))}
+                            onBlur={(e) => { void fetchAddressFromCep(e.target.value); }}
+                            placeholder="CEP"
+                            inputMode="numeric"
+                            className="p-2 border rounded col-span-2"
+                        />
                         <input name="addressStreet" value={formState.addressStreet || ''} onChange={handleChange} placeholder="Rua / Avenida" className="p-2 border rounded col-span-2" />
                         <input name="addressNumber" value={formState.addressNumber || ''} onChange={handleChange} placeholder="Número" className="p-2 border rounded" />
                         <input name="addressComplement" value={formState.addressComplement || ''} onChange={handleChange} placeholder="Complemento" className="p-2 border rounded" />
                         <input name="addressReference" value={formState.addressReference || ''} onChange={handleChange} placeholder="Referência" className="p-2 border rounded col-span-2" />
                         <input name="addressNeighborhood" value={formState.addressNeighborhood || ''} onChange={handleChange} placeholder="Bairro" className="p-2 border rounded" />
-                        <input
-                            name="addressCep"
-                            value={formState.addressCep || ''}
-                            onChange={(e) => setFormState(p => ({ ...p, addressCep: formatCep(e.target.value) }))}
-                            placeholder="CEP"
-                            inputMode="numeric"
-                            className="p-2 border rounded"
-                        />
                         <input name="addressCity" value={formState.addressCity || ''} onChange={handleChange} placeholder="Cidade (endereço)" className="p-2 border rounded" />
                         <select name="addressUf" value={formState.addressUf || ''} onChange={handleChange} className="p-2 border rounded bg-white">
                             <option value="">UF (endereço)</option>
@@ -1457,37 +1480,6 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                         />
                     </div>
 
-                    <div>
-                        <div className="text-xs font-semibold text-gray-500 mb-1">Fotos da galeria (mín. 3, {GALLERY_MIN_WIDTH}x{GALLERY_MIN_HEIGHT}px, até {formatBytes(GALLERY_IMAGE_MAX_BYTES)})</div>
-                        <input
-                            type="file"
-                            multiple
-                            accept="image/jpeg,image/png,image/webp"
-                            onChange={(e) => {
-                                handleGalleryUpload(e.target.files);
-                                if (e.target) e.target.value = '';
-                            }}
-                            className="text-xs"
-                        />
-                        {(formState.galleryUrls || []).length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                                {(formState.galleryUrls || []).map((url) => (
-                                    <div key={url} className="relative">
-                                        <img src={url} alt="Galeria" className="w-20 h-14 object-cover rounded border" />
-                                        <button
-                                            type="button"
-                                            onClick={() => removeGalleryImage(url)}
-                                            className="absolute -top-2 -right-2 bg-white text-red-600 border rounded-full w-5 h-5 text-[10px] leading-4"
-                                            aria-label="Remover foto"
-                                        >
-                                            ×
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        {uploadError && <p className="text-xs text-red-600 mt-1">{uploadError}</p>}
-                    </div>
                     <h4 className="font-bold text-sm border-b pb-1">Contato digital e links</h4>
                     <div className="grid grid-cols-2 gap-3">
                         <div className="col-span-2 grid grid-cols-2 gap-3">
