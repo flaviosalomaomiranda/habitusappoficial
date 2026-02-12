@@ -735,15 +735,28 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
         if (!hasPro && !hasExclusive) return null;
 
         const dayIndex = Math.floor(new Date(todayStr + "T00:00:00").getTime() / 86400000);
-        const preferPro = slotIndex % 2 === 0;
+        const totalPool = cityProProfessionals.length + cityExclusiveProfessionals.length;
+
+        // Com 1 ou 2 profissionais, mostra no máximo 1 vez cada (sem repetição).
+        if (totalPool <= 2) {
+            if (slotIndex >= totalPool) return null;
+            if (hasExclusive && hasPro) {
+                if (slotIndex === 0) return cityExclusiveProfessionals[dayIndex % cityExclusiveProfessionals.length];
+                return cityProProfessionals[dayIndex % cityProProfessionals.length];
+            }
+            const list = hasExclusive ? cityExclusiveProfessionals : cityProProfessionals;
+            return list[(slotIndex + dayIndex) % list.length] ?? null;
+        }
+
+        const preferExclusive = slotIndex % 2 === 0;
 
         if (hasPro && hasExclusive) {
-            if (preferPro) {
-                const idx = (Math.floor(slotIndex / 2) + dayIndex) % cityProProfessionals.length;
-                return cityProProfessionals[idx];
+            if (preferExclusive) {
+                const idx = (Math.floor(slotIndex / 2) + dayIndex) % cityExclusiveProfessionals.length;
+                return cityExclusiveProfessionals[idx];
             }
-            const idx = (Math.floor(slotIndex / 2) + dayIndex) % cityExclusiveProfessionals.length;
-            return cityExclusiveProfessionals[idx];
+            const idx = (Math.floor(slotIndex / 2) + dayIndex) % cityProProfessionals.length;
+            return cityProProfessionals[idx];
         }
 
         const list = hasPro ? cityProProfessionals : cityExclusiveProfessionals;
@@ -1067,21 +1080,21 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                 const supportInsertionIndex = Math.floor(index / 3);
                                                 const shouldInsertSupportMobile = (index + 1) % 3 === 0;
                                                 const supportProfessionalMobile = shouldInsertSupportMobile
-                                                    ? (servicePoolCount <= 1 && supportInsertionIndex > 0 ? null : getServiceProfessionalForSlot(supportInsertionIndex))
+                                                    ? (servicePoolCount <= 2 && supportInsertionIndex > servicePoolCount - 1 ? null : getServiceProfessionalForSlot(supportInsertionIndex))
                                                     : null;
 
                                                 // Desktop md (2 colunas): após cada 3 linhas = 6 rotinas
                                                 const desktopMdSlotIndex = Math.floor((index + 1) / 6) - 1;
                                                 const shouldInsertSupportDesktopMd = (index + 1) % 6 === 0;
                                                 const supportProfessionalDesktopMd = shouldInsertSupportDesktopMd
-                                                    ? (servicePoolCount <= 1 && desktopMdSlotIndex > 0 ? null : getServiceProfessionalForSlot(desktopMdSlotIndex))
+                                                    ? (servicePoolCount <= 2 && desktopMdSlotIndex > servicePoolCount - 1 ? null : getServiceProfessionalForSlot(desktopMdSlotIndex))
                                                     : null;
 
                                                 // Desktop xl (3 colunas): após cada 3 linhas = 9 rotinas
                                                 const desktopXlSlotIndex = Math.floor((index + 1) / 9) - 1;
                                                 const shouldInsertSupportDesktopXl = (index + 1) % 9 === 0;
                                                 const supportProfessionalDesktopXl = shouldInsertSupportDesktopXl
-                                                    ? (servicePoolCount <= 1 && desktopXlSlotIndex > 0 ? null : getServiceProfessionalForSlot(desktopXlSlotIndex))
+                                                    ? (servicePoolCount <= 2 && desktopXlSlotIndex > servicePoolCount - 1 ? null : getServiceProfessionalForSlot(desktopXlSlotIndex))
                                                     : null;
                                                 return (
                                                     <React.Fragment key={habit.id}>
