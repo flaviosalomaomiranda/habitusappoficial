@@ -57,6 +57,9 @@ const ManageTemplatesModal: React.FC<ManageTemplatesModalProps> = ({ onClose, em
                             <div>
                                 <span className="text-lg font-medium">{template.name}</span>
                                 <p className="text-sm text-gray-500">{template.isActive === false ? 'Inativo' : 'Ativo'}</p>
+                                <p className="text-xs text-gray-400">
+                                  {template.uf && template.cityName ? `${template.uf} - ${template.cityName}` : 'Sem local definido'}
+                                </p>
                             </div>
                         </div>
                         <div className="flex items-center gap-4">

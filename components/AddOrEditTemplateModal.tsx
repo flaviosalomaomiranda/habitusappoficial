@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { RoutineTemplate } from '../types';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/lib/firebase';
+import { getCitiesByState, getStates, Municipio, UF } from '../services/ibgeService';
 
 interface AddOrEditTemplateModalProps {
   template: RoutineTemplate | null;
@@ -60,14 +61,57 @@ const cropToSquareBlob = async (file: File): Promise<Blob> => {
 };
 
 const AddOrEditTemplateModal: React.FC<AddOrEditTemplateModalProps> = ({ template, onClose }) => {
-  const { addRoutineTemplate, updateRoutineTemplate, deleteRoutineTemplate } = useAppContext();
+  const { addRoutineTemplate, updateRoutineTemplate, deleteRoutineTemplate, settings } = useAppContext();
   const isEditing = template !== null;
 
   const [name, setName] = useState(template?.name || '');
   const [imageUrl, setImageUrl] = useState(template?.imageUrl || '');
   const [isActive, setIsActive] = useState(template?.isActive ?? true);
+  const [uf, setUf] = useState(template?.uf || settings.familyLocation?.uf || '');
+  const [cityId, setCityId] = useState(template?.cityId || settings.familyLocation?.cityId || '');
+  const [cityName, setCityName] = useState(template?.cityName || settings.familyLocation?.cityName || '');
+  const [states, setStates] = useState<UF[]>([]);
+  const [cities, setCities] = useState<Municipio[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getStates()
+      .then((data) => {
+        if (!active) return;
+        setStates(data);
+      })
+      .catch(() => {
+        if (!active) return;
+        setStates([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!uf) {
+      setCities([]);
+      return () => {
+        active = false;
+      };
+    }
+    getCitiesByState(uf)
+      .then((data) => {
+        if (!active) return;
+        setCities(data);
+      })
+      .catch(() => {
+        if (!active) return;
+        setCities([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [uf]);
 
   const handleUpload = async (file: File) => {
     setFormError(null);
@@ -105,11 +149,28 @@ const AddOrEditTemplateModal: React.FC<AddOrEditTemplateModalProps> = ({ templat
       setFormError('Envie uma imagem 400x400.');
       return;
     }
+    if (!uf) {
+      setFormError('Selecione o estado (UF).');
+      return;
+    }
+    if (!cityId) {
+      setFormError('Selecione a cidade.');
+      return;
+    }
+    const selectedCity = cities.find((c) => String(c.id) === cityId);
+    const resolvedCityName = selectedCity?.nome || cityName || '';
+    if (!resolvedCityName) {
+      setFormError('Cidade invalida. Selecione novamente.');
+      return;
+    }
 
     const templateData: Omit<RoutineTemplate, 'id'> = {
       name: trimmedName,
       imageUrl: imageUrl.trim(),
       isActive,
+      uf,
+      cityId,
+      cityName: resolvedCityName,
     };
 
     if (isEditing && template) {
@@ -158,6 +219,51 @@ const AddOrEditTemplateModal: React.FC<AddOrEditTemplateModalProps> = ({ templat
             {imageUrl && (
               <img src={imageUrl} alt="Prévia do modelo" className="mt-2 w-20 h-20 object-cover rounded-lg border" />
             )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-gray-700 font-semibold mb-2">Estado (UF)</label>
+              <select
+                value={uf}
+                onChange={(e) => {
+                  setUf(e.target.value);
+                  setCityId('');
+                  setCityName('');
+                  if (formError) setFormError(null);
+                }}
+                className="w-full px-4 py-2 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="">Selecione</option>
+                {states.map((state) => (
+                  <option key={state.id} value={state.sigla}>
+                    {state.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-gray-700 font-semibold mb-2">Cidade</label>
+              <select
+                value={cityId}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setCityId(value);
+                  const selectedCity = cities.find((city) => String(city.id) === value);
+                  setCityName(selectedCity?.nome || '');
+                  if (formError) setFormError(null);
+                }}
+                disabled={!uf}
+                className="w-full px-4 py-2 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
+              >
+                <option value="">{uf ? 'Selecione' : 'Escolha UF antes'}</option>
+                {cities.map((city) => (
+                  <option key={city.id} value={String(city.id)}>
+                    {city.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="flex items-center justify-between rounded-lg border p-3 bg-gray-50">

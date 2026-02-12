@@ -21,8 +21,16 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({
   onHabitExists,
   onNoChildSelected,
 }) => {
-  const { children, addHabitToMultipleChildren, routineTemplates } = useAppContext();
-  const activeTemplates = routineTemplates.filter((template) => template.isActive !== false);
+  const { children, addHabitToMultipleChildren, routineTemplates, settings } = useAppContext();
+  const familyLocation = settings.familyLocation;
+  const activeTemplates = routineTemplates.filter((template) => {
+    if (template.isActive === false) return false;
+    if (!template.uf && !template.cityId) return true;
+    if (!familyLocation) return false;
+    if (template.uf && template.uf !== familyLocation.uf) return false;
+    if (template.cityId && template.cityId !== familyLocation.cityId) return false;
+    return true;
+  });
   const [name, setName] = useState('');
   const [selectedIcon, setSelectedIcon] = useState<IconName>('Sparkles');
   const [scheduleMode, setScheduleMode] = useState<'recurring' | 'once'>('recurring');

@@ -71,6 +71,9 @@ export interface RoutineTemplate {
   name: string;
   imageUrl?: string;
   isActive?: boolean;
+  uf?: string;
+  cityId?: string;
+  cityName?: string;
   icon?: IconName;
   reward?: Reward;
   schedule?: HabitSchedule;
