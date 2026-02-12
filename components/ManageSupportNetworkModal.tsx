@@ -111,6 +111,23 @@ const formatCep = (value: string) => {
     return digits.replace(/(\d{5})(\d)/, "$1-$2");
 };
 
+const addMonthsToIsoDate = (dateStr: string, months: number) => {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const base = new Date(y, (m || 1) - 1, d || 1);
+    base.setMonth(base.getMonth() + months);
+    const yy = base.getFullYear();
+    const mm = String(base.getMonth() + 1).padStart(2, "0");
+    const dd = String(base.getDate()).padStart(2, "0");
+    return `${yy}-${mm}-${dd}`;
+};
+
+const getTierLabel = (tier?: string) => {
+    if (tier === "master") return "MASTER";
+    if (tier === "exclusive") return "EXCLUSIVO";
+    if (tier === "top") return "PRO";
+    return "LISTADO";
+};
+
 const readFirestorePrimitive = (value: any): any => {
     if (!value || typeof value !== "object") return undefined;
     if ("stringValue" in value) return value.stringValue;
@@ -386,7 +403,7 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                 <div className="flex-grow overflow-y-auto pr-2">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-gray-50 sticky top-0">
-                            <tr><th className="p-2">Nome</th><th>Cidade/UF</th><th>Especialidades</th><th>Tier</th><th>Status</th><th>Ações</th></tr>
+                            <tr><th className="p-2">Nome</th><th>Cidade/UF</th><th>Especialidades</th><th>Categoria</th><th>Status</th><th>Ações</th></tr>
                         </thead>
                         <tbody>
                             {professionalsForAdmin
@@ -405,7 +422,7 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                                             prof.tier === 'exclusive' ? 'bg-purple-100 text-purple-700' :
                                             prof.tier === 'top' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
                                         }`}>
-                                            {prof.tier}
+                                            {getTierLabel(prof.tier)}
                                         </span>
                                     </td>
                                     <td>
@@ -520,6 +537,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
     const [isUploading, setIsUploading] = useState(false);
     const [uploadError, setUploadError] = useState<string | null>(null);
     const [masterMonth, setMasterMonth] = useState(() => new Date().toISOString().slice(0, 7));
+    const todayStr = new Date().toISOString().slice(0, 10);
 
     const resolvePricing = (tier?: string, billing?: string) => {
         if (!tier || !billing) return undefined;
@@ -576,6 +594,21 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         if (formState.uf) getCitiesByState(formState.uf).then(setCities);
     }, [formState.uf]);
 
+    useEffect(() => {
+        const tier = formState.tier || "verified";
+        if (tier === "master") return;
+
+        const start = formState.validFrom && formState.validFrom >= todayStr ? formState.validFrom : todayStr;
+        const minEnd = addMonthsToIsoDate(start, 1);
+        if (formState.validFrom !== start || !formState.validTo || formState.validTo < minEnd) {
+            setFormState((p) => ({
+                ...p,
+                validFrom: start,
+                validTo: !p.validTo || p.validTo < minEnd ? minEnd : p.validTo,
+            }));
+        }
+    }, [formState.tier, formState.validFrom, formState.validTo, todayStr]);
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
         const checked = (e.target as HTMLInputElement).checked;
@@ -597,6 +630,9 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         } else if (name === "bio") {
             if (value.length > BIO_MAX_CHARS) return;
             setFormState(p => ({ ...p, [name]: value }));
+        } else if (name === "validFrom") {
+            const normalized = value && value < todayStr ? todayStr : value;
+            setFormState((p) => ({ ...p, validFrom: normalized }));
         } else {
             setFormState(p => ({ ...p, [name]: value }));
         }
@@ -754,7 +790,14 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         if (!formState.contacts?.email?.trim()) return alert("Informe o e-mail principal.");
 
         if (!formState.validFrom || !formState.validTo) return alert("Informe o período de validade.");
+        if (formState.validFrom < todayStr) return alert("A data de início não pode ser retroativa.");
         if (formState.validTo < formState.validFrom) return alert("A data final não pode ser menor que a inicial.");
+        if (formState.tier !== "master") {
+            const minValidTo = addMonthsToIsoDate(formState.validFrom, 1);
+            if (formState.validTo < minValidTo) {
+                return alert(`Para ${getTierLabel(formState.tier)}, o período mínimo é 1 mês. Data final mínima: ${minValidTo}.`);
+            }
+        }
 
         if (!formState.photoUrl?.trim()) return alert("Envie a foto de perfil.");
         if (formState.tier === "master" && !formState.videoUrl) {
@@ -1020,11 +1063,19 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                         </select>
                         <div>
                             <div className="text-xs font-semibold text-gray-500 mb-1">Início do contrato</div>
-                            <input name="validFrom" type="date" value={formState.validFrom || ''} onChange={handleChange} className="p-2 border rounded w-full" required />
+                            <input name="validFrom" type="date" value={formState.validFrom || ''} onChange={handleChange} min={todayStr} className="p-2 border rounded w-full" required />
                         </div>
                         <div>
                             <div className="text-xs font-semibold text-gray-500 mb-1">Fim do contrato</div>
-                            <input name="validTo" type="date" value={formState.validTo || ''} onChange={handleChange} className="p-2 border rounded w-full" required />
+                            <input
+                                name="validTo"
+                                type="date"
+                                value={formState.validTo || ''}
+                                onChange={handleChange}
+                                min={formState.tier === "master" ? (formState.validFrom || todayStr) : addMonthsToIsoDate(formState.validFrom || todayStr, 1)}
+                                className="p-2 border rounded w-full"
+                                required
+                            />
                         </div>
                         <div className="col-span-2">
                             <div className="text-sm font-bold text-gray-700 mt-1">Pagamento</div>
