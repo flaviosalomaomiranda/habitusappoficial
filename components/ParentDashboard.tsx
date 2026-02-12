@@ -22,6 +22,7 @@ import SupportNetworkPage from './SupportNetworkPage';
 import AdSlot from './AdSlot';
 import ManageSupportNetworkModal from './ManageSupportNetworkModal';
 import ManageSupportNetworkPricingModal from './ManageSupportNetworkPricingModal';
+import ManageMasterDefaultsModal from './ManageMasterDefaultsModal';
 import ManageRecommendationsModal from './ManageRecommendationsModal';
 import UserProfileModal from './UserProfileModal';
 import ManageFamilyMembersModal from './ManageFamilyMembersModal';
@@ -37,7 +38,7 @@ type DeletionInfo = {
     date: string;
 }
 
-type ParentView = 'dashboard' | 'recommendations' | 'supportNetwork' | 'favorites' | 'adminTemplates' | 'adminSupportNetwork' | 'adminRecommendations' | 'adminSupportNetworkPricing';
+type ParentView = 'dashboard' | 'recommendations' | 'supportNetwork' | 'favorites' | 'adminTemplates' | 'adminSupportNetwork' | 'adminRecommendations' | 'adminSupportNetworkPricing' | 'adminMasterDefaults';
 
 interface ParentDashboardProps {
     onEnterTvMode: () => void;
@@ -531,9 +532,15 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
             : null;
         if (activeCityMaster) return activeCityMaster;
 
-        const ufDefaultId = familyLocation?.uf ? supportNetworkDefaultMasters.byUf?.[familyLocation.uf] : null;
-        if (ufDefaultId) {
-            const fallbackByUf = supportNetworkProfessionals.find((p) => p.id === ufDefaultId && p.isActive !== false);
+        const cityDefaultId = familyLocation?.cityId ? supportNetworkDefaultMasters.byCityId?.[String(familyLocation.cityId)] : null;
+        if (cityDefaultId) {
+            const fallbackByCity = supportNetworkProfessionals.find((p) => p.id === cityDefaultId && p.isActive !== false);
+            if (fallbackByCity) return fallbackByCity;
+        }
+
+        const ufDefaultLegacyId = familyLocation?.uf ? supportNetworkDefaultMasters.byUfLegacy?.[familyLocation.uf] : null;
+        if (ufDefaultLegacyId) {
+            const fallbackByUf = supportNetworkProfessionals.find((p) => p.id === ufDefaultLegacyId && p.isActive !== false);
             if (fallbackByUf) return fallbackByUf;
         }
 
@@ -579,7 +586,7 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
     const favoriteProfessionals = getFavoriteProfessionals();
     
     const [currentView, setCurrentView] = useState<ParentView>('dashboard');
-    const isAdminPanelView = currentView === 'adminTemplates' || currentView === 'adminSupportNetwork' || currentView === 'adminRecommendations' || currentView === 'adminSupportNetworkPricing';
+    const isAdminPanelView = currentView === 'adminTemplates' || currentView === 'adminSupportNetwork' || currentView === 'adminRecommendations' || currentView === 'adminSupportNetworkPricing' || currentView === 'adminMasterDefaults';
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isAddChildModalOpen, setAddChildModalOpen] = useState(false);
     const [editingChild, setEditingChild] = useState<Child | null>(null);
@@ -825,6 +832,13 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                 Precificação de Planos
                             </button>
                             <button
+                                onClick={() => { setCurrentView('adminMasterDefaults'); setIsMenuOpen(false); }}
+                                className="mt-2 w-full flex items-center gap-4 p-3 bg-purple-50 text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm"
+                            >
+                                <UsersIcon className="w-5 h-5 text-purple-500" />
+                                Master Default
+                            </button>
+                            <button
                                 onClick={() => { setCurrentView('adminRecommendations'); setIsMenuOpen(false); }}
                                 className="mt-2 w-full flex items-center gap-4 p-3 bg-purple-50 text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm"
                             >
@@ -922,6 +936,9 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
             case "adminSupportNetworkPricing":
                 if (!isAdmin) return <div className="p-6 text-sm text-gray-500">Sem permissão.</div>;
                 return <ManageSupportNetworkPricingModal embedded onClose={() => setCurrentView("dashboard")} />;
+            case "adminMasterDefaults":
+                if (!isAdmin) return <div className="p-6 text-sm text-gray-500">Sem permissão.</div>;
+                return <ManageMasterDefaultsModal embedded onClose={() => setCurrentView("dashboard")} />;
             case 'dashboard':
             default:
                 return (

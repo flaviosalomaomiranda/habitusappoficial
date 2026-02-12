@@ -148,8 +148,15 @@ interface AppContextType {
   getFavoriteProfessionals: () => Professional[];
   supportNetworkPricing: SupportNetworkPricing;
   updateSupportNetworkPricing: (plans: SupportNetworkPricing["plans"]) => Promise<void>;
-  supportNetworkDefaultMasters: { globalProfessionalId: string | null; byUf: Record<string, string> };
-  updateSupportNetworkDefaultMasters: (payload: { globalProfessionalId: string | null; byUf: Record<string, string> }) => Promise<void>;
+  supportNetworkDefaultMasters: {
+    globalProfessionalId: string | null;
+    byCityId: Record<string, string>;
+    byUfLegacy: Record<string, string>;
+  };
+  updateSupportNetworkDefaultMasters: (payload: {
+    globalProfessionalId: string | null;
+    byCityId: Record<string, string>;
+  }) => Promise<void>;
 
   isFamilyOwner: boolean;
   canManageMembers: boolean;
@@ -364,10 +371,12 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   });
   const [supportNetworkDefaultMasters, setSupportNetworkDefaultMasters] = useState<{
     globalProfessionalId: string | null;
-    byUf: Record<string, string>;
+    byCityId: Record<string, string>;
+    byUfLegacy: Record<string, string>;
   }>({
     globalProfessionalId: null,
-    byUf: {},
+    byCityId: {},
+    byUfLegacy: {},
   });
   const latestSupportNetworkRef = useRef<Professional[]>(supportNetworkProfessionals);
 
@@ -675,13 +684,18 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     const defaultsRef = doc(db, "supportNetworkSettings", "defaultMasters");
     const unsub = onSnapshot(defaultsRef, (snap) => {
       if (!snap.exists()) {
-        setSupportNetworkDefaultMasters({ globalProfessionalId: null, byUf: {} });
+        setSupportNetworkDefaultMasters({
+          globalProfessionalId: null,
+          byCityId: {},
+          byUfLegacy: {},
+        });
         return;
       }
       const data = snap.data() as any;
       setSupportNetworkDefaultMasters({
         globalProfessionalId: data?.globalProfessionalId ?? null,
-        byUf: (data?.byUf && typeof data.byUf === "object") ? data.byUf : {},
+        byCityId: (data?.byCityId && typeof data.byCityId === "object") ? data.byCityId : {},
+        byUfLegacy: (data?.byUf && typeof data.byUf === "object") ? data.byUf : {},
       });
     });
     return () => unsub();
@@ -859,12 +873,15 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     );
   };
 
-  const updateSupportNetworkDefaultMasters = async (payload: { globalProfessionalId: string | null; byUf: Record<string, string> }) => {
+  const updateSupportNetworkDefaultMasters = async (payload: {
+    globalProfessionalId: string | null;
+    byCityId: Record<string, string>;
+  }) => {
     await setDoc(
       doc(db, "supportNetworkSettings", "defaultMasters"),
       {
         globalProfessionalId: payload.globalProfessionalId ?? null,
-        byUf: payload.byUf || {},
+        byCityId: payload.byCityId || {},
         updatedAt: serverTimestamp(),
         updatedByEmail: auth.currentUser?.email ?? null,
       },
