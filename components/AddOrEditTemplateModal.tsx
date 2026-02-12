@@ -70,6 +70,7 @@ const AddOrEditTemplateModal: React.FC<AddOrEditTemplateModalProps> = ({ templat
   const [uf, setUf] = useState(template?.uf || settings.familyLocation?.uf || '');
   const [cityId, setCityId] = useState(template?.cityId || settings.familyLocation?.cityId || '');
   const [cityName, setCityName] = useState(template?.cityName || settings.familyLocation?.cityName || '');
+  const [isGlobal, setIsGlobal] = useState(!template?.uf && !template?.cityId);
   const [states, setStates] = useState<UF[]>([]);
   const [cities, setCities] = useState<Municipio[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -149,27 +150,36 @@ const AddOrEditTemplateModal: React.FC<AddOrEditTemplateModalProps> = ({ templat
       setFormError('Envie uma imagem 400x400.');
       return;
     }
-    if (!uf) {
-      setFormError('Selecione o estado (UF).');
-      return;
-    }
-    if (!cityId) {
-      setFormError('Selecione a cidade.');
-      return;
-    }
-    const selectedCity = cities.find((c) => String(c.id) === cityId);
-    const resolvedCityName = selectedCity?.nome || cityName || '';
-    if (!resolvedCityName) {
-      setFormError('Cidade invalida. Selecione novamente.');
-      return;
+    let resolvedUf: string | undefined = undefined;
+    let resolvedCityId: string | undefined = undefined;
+    let resolvedCityName: string | undefined = undefined;
+
+    if (!isGlobal) {
+      if (!uf) {
+        setFormError('Selecione o estado (UF) ou marque como Global.');
+        return;
+      }
+      if (!cityId) {
+        setFormError('Selecione a cidade ou marque como Global.');
+        return;
+      }
+      const selectedCity = cities.find((c) => String(c.id) === cityId);
+      const city = selectedCity?.nome || cityName || '';
+      if (!city) {
+        setFormError('Cidade invalida. Selecione novamente.');
+        return;
+      }
+      resolvedUf = uf;
+      resolvedCityId = cityId;
+      resolvedCityName = city;
     }
 
     const templateData: Omit<RoutineTemplate, 'id'> = {
       name: trimmedName,
       imageUrl: imageUrl.trim(),
       isActive,
-      uf,
-      cityId,
+      uf: resolvedUf,
+      cityId: resolvedCityId,
       cityName: resolvedCityName,
     };
 
@@ -221,6 +231,27 @@ const AddOrEditTemplateModal: React.FC<AddOrEditTemplateModalProps> = ({ templat
             )}
           </div>
 
+          <div className="rounded-lg border p-3 bg-gray-50">
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <input
+                type="checkbox"
+                checked={isGlobal}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setIsGlobal(checked);
+                  if (checked) {
+                    setUf('');
+                    setCityId('');
+                    setCityName('');
+                  }
+                  if (formError) setFormError(null);
+                }}
+                className="h-4 w-4"
+              />
+              Global (mostrar para todos os locais)
+            </label>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-gray-700 font-semibold mb-2">Estado (UF)</label>
@@ -228,10 +259,12 @@ const AddOrEditTemplateModal: React.FC<AddOrEditTemplateModalProps> = ({ templat
                 value={uf}
                 onChange={(e) => {
                   setUf(e.target.value);
+                  setIsGlobal(false);
                   setCityId('');
                   setCityName('');
                   if (formError) setFormError(null);
                 }}
+                disabled={isGlobal}
                 className="w-full px-4 py-2 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
                 <option value="">Selecione</option>
@@ -249,14 +282,15 @@ const AddOrEditTemplateModal: React.FC<AddOrEditTemplateModalProps> = ({ templat
                 onChange={(e) => {
                   const value = e.target.value;
                   setCityId(value);
+                  setIsGlobal(false);
                   const selectedCity = cities.find((city) => String(city.id) === value);
                   setCityName(selectedCity?.nome || '');
                   if (formError) setFormError(null);
                 }}
-                disabled={!uf}
+                disabled={!uf || isGlobal}
                 className="w-full px-4 py-2 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
               >
-                <option value="">{uf ? 'Selecione' : 'Escolha UF antes'}</option>
+                <option value="">{isGlobal ? 'Global ativo' : uf ? 'Selecione' : 'Escolha UF antes'}</option>
                 {cities.map((city) => (
                   <option key={city.id} value={String(city.id)}>
                     {city.nome}

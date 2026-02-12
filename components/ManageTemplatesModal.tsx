@@ -58,7 +58,7 @@ const ManageTemplatesModal: React.FC<ManageTemplatesModalProps> = ({ onClose, em
                                 <span className="text-lg font-medium">{template.name}</span>
                                 <p className="text-sm text-gray-500">{template.isActive === false ? 'Inativo' : 'Ativo'}</p>
                                 <p className="text-xs text-gray-400">
-                                  {template.uf && template.cityName ? `${template.uf} - ${template.cityName}` : 'Sem local definido'}
+                                  {template.uf && template.cityName ? `${template.uf} - ${template.cityName}` : 'Global (todos os locais)'}
                                 </p>
                             </div>
                         </div>
