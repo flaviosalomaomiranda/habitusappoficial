@@ -547,7 +547,6 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     // limpa imediatamente para nao "vazar"
     setChildrenData([]);
     setSettings((prev) => ({ ...prev, familyLocation: undefined, defaultMasterProfessionalId: null }));
-    setTemplatesData([]);
     if (!familyId) return;
 
     const unsubSettings = listenFamilySettings(familyId, (data) => {
