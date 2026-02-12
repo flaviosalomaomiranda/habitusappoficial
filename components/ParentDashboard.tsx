@@ -800,57 +800,81 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
         </div>
     );
 
-    const SidebarActions = () => (
+    const SidebarActions = () => {
+        const adminNavButtonClass = (view?: ParentView) => {
+            const isActive = view ? currentView === view : false;
+            return `w-full flex items-center gap-3 p-3 rounded-xl transition-colors font-semibold text-sm border ${
+                isActive
+                    ? "bg-purple-600 text-white border-purple-600 shadow-sm"
+                    : "bg-white text-gray-800 border-gray-200 hover:bg-gray-50"
+            }`;
+        };
+
+        return (
         <div className="flex flex-col h-full">
-                <div className="flex-grow overflow-y-auto px-4 pt-4 space-y-2 pb-4">
-                    {isAdmin && (
-                        <div className="mb-3 rounded-2xl border border-purple-200 bg-purple-50 p-3">
-                            <div className="text-[11px] font-bold text-purple-700 uppercase tracking-widest mb-2">Painel Admin</div>
-                            <button
-                                onClick={() => { setCurrentView('adminSupportNetwork'); setIsMenuOpen(false); }}
-                                className="w-full flex items-center gap-4 p-3 bg-white text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm border border-purple-200"
-                            >
+            <div className="flex-grow overflow-y-auto px-4 pt-4 space-y-2 pb-4">
+                {isAdmin && (
+                    <div className="mb-3 rounded-2xl border border-gray-200 bg-gray-50 p-3 space-y-3">
+                        <div className="px-1">
+                            <div className="text-[11px] font-bold text-gray-700 uppercase tracking-widest">Painel Administrativo</div>
+                            <div className="text-[11px] text-gray-500 mt-0.5">Gestão central do aplicativo</div>
+                        </div>
+
+                        <div className="rounded-xl border border-gray-200 bg-white p-2 space-y-2">
+                            <div className="px-1 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Profissionais</div>
+                            <button onClick={() => { setCurrentView('adminSupportNetwork'); setIsMenuOpen(false); }} className={adminNavButtonClass('adminSupportNetwork')}>
                                 <UsersIcon className="w-5 h-5 text-purple-500" />
-                                Adicionar Profissional
+                                <span>Adicionar Profissional</span>
                             </button>
-                            <button
-                                onClick={() => { setManageManagersModalOpen(true); setIsMenuOpen(false); }}
-                                className="mt-2 w-full flex items-center gap-4 p-3 bg-white text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm border border-purple-200"
-                            >
-                                <UsersIcon className="w-5 h-5 text-purple-500" />
-                                Adicionar Gerente
-                            </button>
-                            <button
-                                onClick={() => { setCurrentView('adminSupportNetworkPricing'); setIsMenuOpen(false); }}
-                                className="mt-2 w-full flex items-center gap-4 p-3 bg-white text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm border border-purple-200"
-                            >
-                                <ClipboardListIcon className="w-5 h-5 text-purple-500" />
-                                Precificação de Planos
-                            </button>
-                            <button
-                                onClick={() => { setCurrentView('adminMasterDefaults'); setIsMenuOpen(false); }}
-                                className="mt-2 w-full flex items-center gap-4 p-3 bg-white text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm border border-purple-200"
-                            >
-                                <UsersIcon className="w-5 h-5 text-purple-500" />
-                                Master Default
-                            </button>
-                            <button
-                                onClick={() => { setCurrentView('adminRecommendations'); setIsMenuOpen(false); }}
-                                className="mt-2 w-full flex items-center gap-4 p-3 bg-white text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm border border-purple-200"
-                            >
-                                <GiftIcon className="w-5 h-5 text-purple-500" />
-                                Gerenciar Shopping
+                            <button onClick={() => { setManageManagersModalOpen(true); setIsMenuOpen(false); }} className={adminNavButtonClass()}>
+                                <UsersIcon className="w-5 h-5 text-indigo-500" />
+                                <span>Adicionar Gerente</span>
                             </button>
                         </div>
-                    )}
+
+                        <div className="rounded-xl border border-gray-200 bg-white p-2 space-y-2">
+                            <div className="px-1 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Planos e Master</div>
+                            <button onClick={() => { setCurrentView('adminSupportNetworkPricing'); setIsMenuOpen(false); }} className={adminNavButtonClass('adminSupportNetworkPricing')}>
+                                <ClipboardListIcon className="w-5 h-5 text-amber-500" />
+                                <span>Precificação de Planos</span>
+                            </button>
+                            <button onClick={() => { setCurrentView('adminMasterDefaults'); setIsMenuOpen(false); }} className={adminNavButtonClass('adminMasterDefaults')}>
+                                <UsersIcon className="w-5 h-5 text-rose-500" />
+                                <span>Master Default</span>
+                            </button>
+                        </div>
+
+                        <div className="rounded-xl border border-gray-200 bg-white p-2 space-y-2">
+                            <div className="px-1 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Conteúdo</div>
+                            <button onClick={() => { setCurrentView('adminTemplates'); setIsMenuOpen(false); }} className={adminNavButtonClass('adminTemplates')}>
+                                <ClipboardListIcon className="w-5 h-5 text-emerald-500" />
+                                <span>Gerenciar Rotinas</span>
+                            </button>
+                            <button onClick={() => { setCurrentView('adminRecommendations'); setIsMenuOpen(false); }} className={adminNavButtonClass('adminRecommendations')}>
+                                <GiftIcon className="w-5 h-5 text-cyan-500" />
+                                <span>Gerenciar Shopping</span>
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {isAdmin ? (
-                    <button onClick={() => { setCurrentView('adminTemplates'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><ClipboardListIcon className="w-5 h-5 text-gray-500" /> Gerenciar Rotinas</button>
+                    <>
+                        <div className="px-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest pt-1">Operação</div>
+                        <button onClick={() => { setManageRewardsModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><StarsIcon className="w-5 h-5 text-gray-500" /> Gerenciar Recompensas</button>
+                        {canManageMembers && (
+                            <button onClick={() => { setManageMembersModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><UserIcon className="w-5 h-5 text-gray-500" /> Gerenciar Membros</button>
+                        )}
+                    </>
                 ) : null}
+
                 {!isAdmin && (
                     <button onClick={() => { setProgressModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><ChartBarIcon className="w-5 h-5 text-gray-500" /> Quadro de Progresso</button>
                 )}
-                <button onClick={() => { setManageRewardsModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><StarsIcon className="w-5 h-5 text-gray-500" /> Gerenciar Recompensas</button>
-                {canManageMembers && (
+                {!isAdmin && (
+                    <button onClick={() => { setManageRewardsModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><StarsIcon className="w-5 h-5 text-gray-500" /> Gerenciar Recompensas</button>
+                )}
+                {!isAdmin && canManageMembers && (
                     <button onClick={() => { setManageMembersModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><UserIcon className="w-5 h-5 text-gray-500" /> Gerenciar Membros</button>
                 )}
                 <button
@@ -877,6 +901,7 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                     </div>
                 )}
             </div>
+
             <div className="p-4 mt-auto space-y-3">
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                     <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-2">Perfil</p>
@@ -905,7 +930,7 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                 {!isAdmin && <AdSlot placement="SIDEBAR" />}
             </div>
         </div>
-    );
+    )};
 
     const renderCurrentView = () => {
         switch (currentView) {
