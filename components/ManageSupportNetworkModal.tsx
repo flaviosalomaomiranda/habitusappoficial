@@ -8,6 +8,9 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/lib/firebase';
 import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { db } from '../src/lib/firebase';
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "../src/lib/firebase";
+import { isAdminUser } from "../src/lib/admin";
 
 interface ManageSupportNetworkModalProps {
     onClose: () => void;
@@ -169,6 +172,7 @@ const parseFirestoreDocToProfessional = (doc: any): Professional | null => {
 const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ onClose, embedded = false }) => {
     const { 
         supportNetworkProfessionals, 
+        setSupportNetworkProfessionals,
         settings, 
         setAdminPin,
         checkAdminPin,
@@ -178,6 +182,8 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
     } = useAppContext();
     
     const [isAuthenticated, setIsAuthenticated] = useState(!settings.adminPin || isManager);
+    const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+    const isAdminEmail = isAdminUser(currentUserEmail);
     const [pin, setPin] = useState('');
     const [error, setError] = useState('');
 
@@ -191,35 +197,50 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
     const [reportProfessional, setReportProfessional] = useState<Professional | null>(null);
 
     useEffect(() => {
+        const unsub = onAuthStateChanged(auth, (user) => {
+            setCurrentUserEmail(user?.email ?? null);
+        });
+        return () => unsub();
+    }, []);
+
+    const fetchSupportNetworkFromCloud = async (syncContext = false) => {
+        try {
+            const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined;
+            const apiKey = import.meta.env.VITE_FIREBASE_API_KEY as string | undefined;
+            if (!projectId || !apiKey) return [] as Professional[];
+            const endpoint = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
+            const body = {
+                structuredQuery: {
+                    from: [{ collectionId: "supportNetwork" }],
+                    limit: 500,
+                },
+            };
+            const response = await fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            if (!response.ok) return [] as Professional[];
+            const raw = await response.json();
+            if (!Array.isArray(raw)) return [] as Professional[];
+            const docs = raw
+                .map(parseFirestoreDocToProfessional)
+                .filter((item): item is Professional => Boolean(item));
+            setRestProfessionals(docs);
+            if (syncContext) {
+                setSupportNetworkProfessionals(docs);
+            }
+            return docs;
+        } catch {
+            return [] as Professional[];
+        }
+    };
+
+    useEffect(() => {
         let cancelled = false;
         const fetchSupportNetwork = async () => {
-            try {
-                const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined;
-                const apiKey = import.meta.env.VITE_FIREBASE_API_KEY as string | undefined;
-                if (!projectId || !apiKey) return;
-                const endpoint = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
-                const body = {
-                    structuredQuery: {
-                        from: [{ collectionId: "supportNetwork" }],
-                        limit: 500,
-                    },
-                };
-                const response = await fetch(endpoint, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(body),
-                });
-                if (!response.ok) return;
-                const raw = await response.json();
-                if (!Array.isArray(raw)) return;
-                const docs = raw
-                    .map(parseFirestoreDocToProfessional)
-                    .filter((item): item is Professional => Boolean(item));
-                if (cancelled || docs.length === 0) return;
-                setRestProfessionals(docs);
-            } catch {
-                // fallback silencioso: mantém a lista atual do contexto
-            }
+            const docs = await fetchSupportNetworkFromCloud(false);
+            if (cancelled || docs.length === 0) return;
         };
         fetchSupportNetwork();
         return () => {
@@ -227,7 +248,12 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
         };
     }, []);
 
-    const professionalsForAdmin = supportNetworkProfessionals.length > 0 ? supportNetworkProfessionals : restProfessionals;
+    const professionalsForAdmin = React.useMemo(() => {
+        const byId = new Map<string, Professional>();
+        supportNetworkProfessionals.forEach((p) => byId.set(p.id, p));
+        restProfessionals.forEach((p) => byId.set(p.id, p));
+        return Array.from(byId.values());
+    }, [supportNetworkProfessionals, restProfessionals]);
     const availableUfs = Array.from(new Set(professionalsForAdmin.map((p) => p.uf).filter(Boolean))).sort();
 
     const getStatusLabel = (prof: Professional) => {
@@ -362,11 +388,21 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                 
                 <div className="flex flex-wrap gap-2 border-b pb-4 mb-4">
                     <button onClick={() => { setEditingProfessional(null); setIsFormOpen(true); }} className="px-4 py-2 bg-green-500 text-white rounded-lg font-semibold">Adicionar Profissional</button>
+                    <button
+                        onClick={async () => {
+                            const docs = await fetchSupportNetworkFromCloud(true);
+                            if (docs.length > 0) alert(`Sincronizado com a nuvem: ${docs.length} profissionais.`);
+                            else alert("Não foi possível sincronizar agora.");
+                        }}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                    >
+                        Sincronizar nuvem
+                    </button>
                     <button onClick={handleBackup} className="px-4 py-2 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700">Backup</button>
-                    {!isManager && (
+                    {(!isManager || isAdminEmail) && (
                         <button onClick={handlePublishToCloud} className="px-4 py-2 bg-purple-600 text-white rounded-lg font-semibold">Publicar na nuvem</button>
                     )}
-                    {!isManager && (
+                    {(!isManager || isAdminEmail) && (
                         <>
                             <button onClick={handleUploadClick} className="px-4 py-2 bg-orange-500 text-white rounded-lg font-semibold">Upload de arquivo</button>
                             <input
@@ -435,7 +471,7 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                         <tbody>
                             {professionalsForAdmin
                                 .filter((prof) => {
-                                    if (!isManager || !managerProfile) return true;
+                                    if (!isManager || !managerProfile || isAdminEmail) return true;
                                     return prof.uf === managerProfile.uf && managerProfile.cityIds.includes(String(prof.cityId));
                                 })
                                 .filter((prof) => !filterUf || prof.uf === filterUf)
