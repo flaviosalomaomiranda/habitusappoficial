@@ -338,7 +338,22 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
         return { topProfessionals: rotatedOrder.slice(0, 3), rotationPeriod: periodDays };
     }, [filteredProfessionals]);
     
-    const listedProfessionals = filteredProfessionals.filter(p => isListedTier(p.tier));
+    const listedProfessionals = useMemo(() => {
+        if (!selectedState || !selectedCity) return [];
+        const selectedUfNormalized = normalizeText(ufSiglaSelecionada || selectedState);
+        return activeSupportNetworkProfessionals.filter((p) => {
+            if (!isListedTier(p.tier)) return false;
+            const profUfNormalized = normalizeText(p.uf);
+            const matchesUf =
+                !selectedUfNormalized ||
+                profUfNormalized === selectedUfNormalized ||
+                profUfNormalized === normalizeText(states.find((s) => s.sigla === ufSiglaSelecionada)?.nome);
+            if (!matchesUf) return false;
+            if (String(p.cityId) !== selectedCity) return false;
+            if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+            return true;
+        });
+    }, [selectedState, selectedCity, ufSiglaSelecionada, activeSupportNetworkProfessionals, states, searchQuery]);
 
     return (
         <div className="flex-1 overflow-y-auto w-full max-w-lg mx-auto px-4 pb-12 animate-in fade-in">
@@ -381,7 +396,7 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
 
                 {/* Specialty Selector */}
                 <div>
-                    <label htmlFor="specialty-select" className="block text-sm font-bold text-gray-700 mb-1">3. Especialidade</label>
+                    <label htmlFor="specialty-select" className="block text-sm font-bold text-gray-700 mb-1">3. Especialidade (opcional)</label>
                     <select id="specialty-select" value={selectedSpecialty} onChange={e => setSelectedSpecialty(e.target.value)} disabled={!selectedCity} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white disabled:bg-gray-100">
                         <option value="">Selecione uma especialidade</option>
                         {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
@@ -389,9 +404,12 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
                 </div>
             </div>
 
-            {selectedState && selectedCity && selectedSpecialty && (
+            {selectedState && selectedCity && (
                 <div className="mt-6">
-                    <p className="text-xs text-gray-500 font-medium">Você está vendo: {selectedState} &gt; {cities.find(c => String(c.id) === selectedCity)?.nome} &gt; {selectedSpecialty}</p>
+                    <p className="text-xs text-gray-500 font-medium">
+                        Você está vendo: {selectedState} &gt; {cities.find(c => String(c.id) === selectedCity)?.nome}
+                        {selectedSpecialty ? ` > ${selectedSpecialty}` : ''}
+                    </p>
                     <input type="text" placeholder="Buscar por nome..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full px-3 py-2 mt-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"/>
 
                     <div className="mt-6 space-y-6">
