@@ -570,6 +570,7 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
     const favoriteProfessionals = getFavoriteProfessionals();
     
     const [currentView, setCurrentView] = useState<ParentView>('dashboard');
+    const isAdminPanelView = currentView === 'adminSupportNetwork' || currentView === 'adminRecommendations' || currentView === 'adminSupportNetworkPricing';
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isAddChildModalOpen, setAddChildModalOpen] = useState(false);
     const [editingChild, setEditingChild] = useState<Child | null>(null);
@@ -1297,7 +1298,7 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
 
 
             <main className="flex-1 flex flex-col h-full overflow-hidden bg-white min-h-0 relative z-10 pointer-events-auto">
-               {children.length > 0 && currentView !== "dashboard" && (
+               {children.length > 0 && currentView !== "dashboard" && !isAdminPanelView && (
                    <div className="md:hidden border-b border-gray-100 px-4 py-2">
                        <div className="relative">
                            <div className="pointer-events-none absolute left-0 top-0 z-20 h-full w-8 bg-gradient-to-r from-white to-transparent" />
