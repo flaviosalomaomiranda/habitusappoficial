@@ -48,6 +48,13 @@ export interface Habit {
   name:string;
   icon: IconName;
   imageUrl?: string;
+  semanticTags?: string[];
+  source?: "manual" | "template" | "qrsaude";
+  prescribedByProfessionalId?: string;
+  prescribedByProfessionalName?: string;
+  prescribedByProfessionalPhotoUrl?: string;
+  prescribedByProfessionalWhatsapp?: string;
+  prescribedAt?: string;
   category?: HabitCategory;
   schedule: HabitSchedule;
   reward: Reward;
@@ -71,6 +78,7 @@ export interface RoutineTemplate {
   name: string;
   imageUrl?: string;
   isActive?: boolean;
+  semanticTags?: string[];
   uf?: string;
   cityId?: string;
   cityName?: string;
@@ -85,6 +93,7 @@ export interface ShopReward {
     icon: IconName;
     cost: number;
     imageUrl?: string;
+    semanticTags?: string[];
     limit?: RewardLimit;
 }
 
@@ -110,6 +119,7 @@ export interface AppSettings {
     adminPin?: string | null;
     familyLocation?: FamilyLocation;
     defaultMasterProfessionalId?: string | null;
+    semanticTagScores?: Record<string, number>;
 }
 
 export type BillingCycle = "monthly" | "annual";
@@ -218,6 +228,7 @@ export interface Professional {
   highlights?: string[];
   galleryUrls?: string[];
   exclusiveRoutines?: ExclusiveRoutineTemplate[];
+  semanticTags?: string[];
 }
 
 export interface Manager {
@@ -275,8 +286,15 @@ export interface Recommendation {
   ageMin?: number | null;
   ageMax?: number | null;
   priority?: number;
+  placement?: "master" | "hero" | "contextual_footer" | "explore";
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AdMatchInput {
+  userTaskTags?: string[];
+  userRewardTags?: string[];
+  userLocation?: FamilyLocation;
 }
 
 

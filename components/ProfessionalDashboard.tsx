@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { signOut } from "firebase/auth";
 import { auth } from "../src/lib/firebase";
 import { Professional } from "../types";
 import { MapPinIcon, PhoneIcon } from "./icons/MiscIcons";
+import { buildQRSaudeImageUrl, buildQRSaudeLink, createQRSaudeToken } from "../utils/qrSaude";
 
 interface ProfessionalDashboardProps {
   professional: Professional;
@@ -16,11 +17,15 @@ const getPlanLabel = (tier?: string) => {
 };
 
 const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ professional }) => {
+  const [copied, setCopied] = useState(false);
   const contactHref = professional.contacts?.whatsapp
     ? `https://wa.me/55${professional.contacts.whatsapp.replace(/\D/g, "")}`
     : professional.contacts?.phone
       ? `tel:${professional.contacts.phone}`
       : professional.contacts?.websiteUrl || "#";
+  const qrToken = useMemo(() => createQRSaudeToken(professional.id), [professional.id]);
+  const qrLink = useMemo(() => buildQRSaudeLink(qrToken), [qrToken]);
+  const qrImageUrl = useMemo(() => buildQRSaudeImageUrl(qrLink), [qrLink]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
@@ -93,6 +98,40 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ professio
             <p className="mt-3 text-xs text-gray-500">
               Em breve: métricas reais por período (dia/semana/mês).
             </p>
+          </div>
+        </section>
+
+        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 md:p-6">
+          <div className="flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
+            <div>
+              <h2 className="font-bold text-gray-900">QRSaude - Prescrição Digital</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Mostre este QR para conectar o usuário e enviar rotinas prescritas com destaque.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(qrLink);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1800);
+                  }}
+                  className="px-3 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold hover:bg-purple-700"
+                >
+                  {copied ? "Link copiado" : "Copiar link QRSaude"}
+                </button>
+                <a
+                  href={qrLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 rounded-lg border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Abrir link
+                </a>
+              </div>
+            </div>
+            <div className="flex justify-center md:justify-end">
+              <img src={qrImageUrl} alt="QRSaude" className="w-40 h-40 rounded-xl border border-gray-200" />
+            </div>
           </div>
         </section>
       </div>

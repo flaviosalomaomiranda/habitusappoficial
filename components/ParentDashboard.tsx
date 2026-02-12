@@ -30,6 +30,8 @@ import ManageManagersModal from './ManageManagersModal';
 import { HABIT_ICONS, getHabitCategoryStyle } from '../constants';
 import { StarIcon } from './icons/HabitIcons';
 import { getTodayDateString, calculateAge, daysUntilNextBirthday } from '../utils/dateUtils';
+import { inferSemanticTags } from '../utils/semanticTags';
+import { pickContextualFooterAd, pickRoundRobinExclusive } from '../utils/adMatching';
 
 type DeletionInfo = {
     childId: string;
@@ -479,7 +481,7 @@ const SupportFavoriteVerifiedCard: React.FC<{ prof: Professional; onToggleFavori
 
 
 const ParentDashboard: React.FC<ParentDashboardProps> = ({ onEnterTvMode }) => {
-  const { settings, supportNetworkDefaultMasters, children, deleteHabit, skipHabitForDate, getHabitsForChildOnDate, toggleHabitCompletion, rejectHabitCompletion, redeemedRewards, toggleRewardDelivery, getFavoriteProfessionals, toggleFavoriteProfessional, supportNetworkProfessionals, activeSupportNetworkProfessionals, isFamilyOwner, canManageMembers, canEditChildren, canEditHabits, canMarkHabits, isManager } = useAppContext();
+  const { settings, supportNetworkDefaultMasters, children, deleteHabit, skipHabitForDate, getHabitsForChildOnDate, toggleHabitCompletion, rejectHabitCompletion, redeemedRewards, toggleRewardDelivery, getFavoriteProfessionals, toggleFavoriteProfessional, supportNetworkProfessionals, activeSupportNetworkProfessionals, productRecommendations, trackAdEvent, isFamilyOwner, canManageMembers, canEditChildren, canEditHabits, canMarkHabits, isManager } = useAppContext();
 
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
 
@@ -729,6 +731,49 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
             .slice(0, 3);
     }, [redeemedRewards, selectedChildId]);
 
+    const completedTodayCount = useMemo(() => {
+        return habitsForDate.filter((habit) => habit.completions[viewedDate] === 'COMPLETED').length;
+    }, [habitsForDate, viewedDate]);
+
+    const latestCompletedHabitTags = useMemo(() => {
+        for (let i = habitsForDate.length - 1; i >= 0; i -= 1) {
+            const habit = habitsForDate[i];
+            if (habit.completions[viewedDate] !== 'COMPLETED') continue;
+            return habit.semanticTags && habit.semanticTags.length > 0
+                ? habit.semanticTags
+                : inferSemanticTags(habit.name, habit.category);
+        }
+        return [] as string[];
+    }, [habitsForDate, viewedDate]);
+
+    const latestRewardTags = useMemo(() => {
+        const reward = childRedeemedRewards[0]?.reward;
+        if (!reward) return [] as string[];
+        return reward.semanticTags && reward.semanticTags.length > 0
+            ? reward.semanticTags
+            : inferSemanticTags(reward.name);
+    }, [childRedeemedRewards]);
+
+    const contextualFooterAd = useMemo(() => {
+        return pickContextualFooterAd({
+            recommendations: productRecommendations,
+            lastRewardTags: latestRewardTags,
+            lastTaskTags: latestCompletedHabitTags,
+        });
+    }, [productRecommendations, latestRewardTags, latestCompletedHabitTags]);
+
+    useEffect(() => {
+        if (heroExclusiveProfessional) {
+            trackAdEvent(`hero:${heroExclusiveProfessional.id}`, "impression", { slot: "hero_exclusive" });
+        }
+    }, [heroExclusiveProfessional, trackAdEvent]);
+
+    useEffect(() => {
+        if (contextualFooterAd) {
+            trackAdEvent(`footer:${contextualFooterAd.id}`, "impression", { slot: "contextual_footer" });
+        }
+    }, [contextualFooterAd, trackAdEvent]);
+
     const renderMasterBanner = () => {
         if (!masterProfessional) return null;
         return (
@@ -745,21 +790,9 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
         );
     };
 
-    const serviceSpotlightSequence = useMemo(() => {
-        const sequence: Professional[] = [];
-        const maxLen = Math.max(cityExclusiveProfessionals.length, cityProProfessionals.length);
-        for (let i = 0; i < maxLen; i += 1) {
-            if (cityExclusiveProfessionals[i]) sequence.push(cityExclusiveProfessionals[i]);
-            if (cityProProfessionals[i]) sequence.push(cityProProfessionals[i]);
-        }
-        return sequence;
-    }, [cityExclusiveProfessionals, cityProProfessionals]);
-
-    const dailyServiceProfessional = useMemo(() => {
-        if (serviceSpotlightSequence.length === 0) return null;
-        const dayIndex = Math.floor(new Date(todayStr + "T00:00:00").getTime() / 86400000);
-        return serviceSpotlightSequence[dayIndex % serviceSpotlightSequence.length] ?? null;
-    }, [serviceSpotlightSequence, todayStr]);
+    const heroExclusiveProfessional = useMemo(() => {
+        return pickRoundRobinExclusive(cityExclusiveProfessionals, familyLocation);
+    }, [cityExclusiveProfessionals, familyLocation?.cityId, familyLocation?.uf]);
 
     const renderServiceSpotlight = (professional: Professional | null, { inline = false }: { inline?: boolean } = {}) => {
         if (!professional) return null;
@@ -1091,7 +1124,9 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                 const status = habit.completions[viewedDate];
                                                 const isCompleted = status === 'COMPLETED';
                                                 const isPending = status === 'PENDING';
+                                                const isQrSaude = habit.source === "qrsaude";
                                                 const bgColor = isCompleted ? 'bg-green-50/70 border-green-100' : isPending ? 'bg-yellow-50/70 border-yellow-200' : 'bg-gray-50/70 border-red-200';
+                                                const qrSaudeBorderClass = isQrSaude ? "border-amber-300 ring-1 ring-amber-200" : "";
                                                 const rewardClass = isCompleted || isPending ? 'text-yellow-700' : 'text-yellow-700/35';
                                                 const categoryStyle = getHabitCategoryStyle(habit.category);
                                                 const iconClasses = isCompleted
@@ -1103,24 +1138,21 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                 const swipeOffset = swipeOffsets[habit.id] ?? 0;
                                                 const swipeProgress = Math.min(1, swipeOffset / SWIPE_COMPLETE_THRESHOLD);
 
-                                                // Mobile: 1 bloco profissional a cada 3 rotinas
-                                                const shouldInsertSupportMobile = (index + 1) % 3 === 0 && Math.floor(index / 3) === 0;
+                                                // Hero Exclusive: inserir após a 2a rotina (fallback após a 1a se lista curta)
+                                                const shouldInsertSupportMobile = index === Math.min(1, Math.max(0, habitsForDate.length - 1));
                                                 const supportProfessionalMobile = shouldInsertSupportMobile
-                                                    ? dailyServiceProfessional
+                                                    ? heroExclusiveProfessional
                                                     : null;
 
-                                                // Desktop md (2 colunas): após cada 3 linhas = 6 rotinas
-                                                const desktopMdSlotIndex = Math.floor((index + 1) / 6) - 1;
-                                                const shouldInsertSupportDesktopMd = (index + 1) % 6 === 0 && desktopMdSlotIndex === 0;
+                                                // Desktop md/xl: mesma regra de inserir 1x por carregamento
+                                                const shouldInsertSupportDesktopMd = index === Math.min(1, Math.max(0, habitsForDate.length - 1));
                                                 const supportProfessionalDesktopMd = shouldInsertSupportDesktopMd
-                                                    ? dailyServiceProfessional
+                                                    ? heroExclusiveProfessional
                                                     : null;
 
-                                                // Desktop xl (3 colunas): após cada 3 linhas = 9 rotinas
-                                                const desktopXlSlotIndex = Math.floor((index + 1) / 9) - 1;
-                                                const shouldInsertSupportDesktopXl = (index + 1) % 9 === 0 && desktopXlSlotIndex === 0;
+                                                const shouldInsertSupportDesktopXl = index === Math.min(1, Math.max(0, habitsForDate.length - 1));
                                                 const supportProfessionalDesktopXl = shouldInsertSupportDesktopXl
-                                                    ? dailyServiceProfessional
+                                                    ? heroExclusiveProfessional
                                                     : null;
                                                 return (
                                                     <React.Fragment key={habit.id}>
@@ -1135,7 +1167,7 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                                 </div>
                                                             )}
                                                             <div
-                                                                className={`flex items-center justify-between p-2.5 sm:p-2 rounded-xl border transition-transform ${canSwipeToComplete ? "" : "transition-all"} ${bgColor}`}
+                                                                className={`flex items-center justify-between p-2.5 sm:p-2 rounded-xl border transition-transform ${canSwipeToComplete ? "" : "transition-all"} ${bgColor} ${qrSaudeBorderClass}`}
                                                                 style={canSwipeToComplete ? { transform: `translateX(${swipeOffset}px)` } : undefined}
                                                                 onTouchStart={canSwipeToComplete ? (event) => beginHabitSwipe(habit.id, event) : undefined}
                                                                 onTouchMove={canSwipeToComplete ? moveHabitSwipe : undefined}
@@ -1152,6 +1184,14 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                                     </div>
                                                                     <div className="flex-1">
                                                                         <span className={`text-[13px] sm:text-sm font-bold block leading-tight ${isCompleted ? 'text-green-800' : 'text-gray-800'}`}>{habit.name}</span>
+                                                                        {isQrSaude && (
+                                                                            <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-amber-700 font-semibold">
+                                                                                {habit.prescribedByProfessionalPhotoUrl ? (
+                                                                                    <img src={habit.prescribedByProfessionalPhotoUrl} alt={habit.prescribedByProfessionalName || "Profissional"} className="w-4 h-4 rounded-full object-cover border border-amber-300" />
+                                                                                ) : null}
+                                                                                <span>QRSaude • {habit.prescribedByProfessionalName || "Profissional"}</span>
+                                                                            </div>
+                                                                        )}
                                                                         <div className="mt-0.5 flex items-center gap-1 text-[10px] sm:text-[11px] text-gray-500">
                                                                             <span className={`${rewardClass} font-bold flex items-center gap-0.5`}>
                                                                                 {habit.reward.type === 'STARS' ? `+${habit.reward.value}` : habit.reward.activityName}
@@ -1173,7 +1213,19 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                                     ) : (
                                                                         <>
                                                                             {canMarkHabits && (
-                                                                                <button onClick={() => toggleHabitCompletion(selectedChild.id, habit.id, viewedDate)} className={`h-9 w-9 sm:h-8 sm:w-8 rounded-lg transition-all font-bold text-[10px] flex items-center justify-center active:scale-95 ${isCompleted ? 'bg-green-500 text-white' : 'bg-white text-gray-400 hover:text-purple-600 border border-gray-200 shadow-sm'}`}>{isCompleted ? <CheckCircleIcon className="w-4 h-4 text-white" /> : 'OK'}</button>
+                                                                                isCompleted && habit.source === "qrsaude" && habit.prescribedByProfessionalWhatsapp ? (
+                                                                                    <a
+                                                                                        href={`https://wa.me/55${habit.prescribedByProfessionalWhatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(`Olá Dr(a). ${habit.prescribedByProfessionalName || ""}, aqui está a comprovação da minha tarefa: ${habit.name}.`)}`}
+                                                                                        target="_blank"
+                                                                                        rel="noopener noreferrer"
+                                                                                        onClick={() => trackAdEvent(`qrsaude:${habit.id}`, "click", { slot: "habit_whatsapp_proof" })}
+                                                                                        className="h-9 px-2 sm:h-8 rounded-lg transition-all font-bold text-[10px] flex items-center justify-center bg-emerald-500 text-white active:scale-95"
+                                                                                    >
+                                                                                        WhatsApp
+                                                                                    </a>
+                                                                                ) : (
+                                                                                    <button onClick={() => toggleHabitCompletion(selectedChild.id, habit.id, viewedDate)} className={`h-9 w-9 sm:h-8 sm:w-8 rounded-lg transition-all font-bold text-[10px] flex items-center justify-center active:scale-95 ${isCompleted ? 'bg-green-500 text-white' : 'bg-white text-gray-400 hover:text-purple-600 border border-gray-200 shadow-sm'}`}>{isCompleted ? <CheckCircleIcon className="w-4 h-4 text-white" /> : 'OK'}</button>
+                                                                                )
                                                                             )}
                                                                             {canWriteHabits && (
                                                                                 <button onClick={() => setConfirmingDelete({ childId: selectedChild.id, habitId: habit.id, habitName: habit.name, date: viewedDate })} className="h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"><TrashIcon className="w-4 h-4" /></button>
@@ -1211,6 +1263,41 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                             )}
                                         </div>
                                     </div>
+
+                                    {completedTodayCount >= 3 && cityProProfessionals.length > 0 && (
+                                        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <h3 className="text-sm sm:text-base font-semibold text-gray-800">Explorar Profissionais PRO</h3>
+                                                <button onClick={() => setCurrentView('supportNetwork')} className="text-xs font-bold text-purple-600">Ver todos</button>
+                                            </div>
+                                            <div className="flex gap-3 overflow-x-auto pb-2">
+                                                {cityProProfessionals.map((prof) => (
+                                                    <div key={`pro-carousel-${prof.id}`} className="min-w-[220px] max-w-[220px] bg-gray-50 border border-gray-200 rounded-xl p-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <img src={prof.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(prof.name)}&background=random`} alt={prof.name} className="w-10 h-10 rounded-full object-cover border border-gray-200" />
+                                                            <div className="min-w-0">
+                                                                <p className="text-sm font-bold text-gray-800 truncate">{prof.name}</p>
+                                                                <p className="text-[11px] text-gray-500 truncate">{getSpecialtiesLabel(prof)}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="mt-3 flex gap-2">
+                                                            {(prof.contacts.bookingUrl || prof.contacts.whatsapp) && (
+                                                                <a
+                                                                    href={prof.contacts.bookingUrl || buildWhatsAppLink(prof.contacts.whatsapp || "", buildBookingMessage(prof))}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    onClick={() => trackAdEvent(`pro:${prof.id}`, "click", { slot: "pro_carousel" })}
+                                                                    className="flex-1 text-center text-xs font-bold rounded-lg py-1.5 bg-purple-600 text-white"
+                                                                >
+                                                                    Contato
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="max-w-4xl mx-auto space-y-6">
@@ -1229,7 +1316,31 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                 </div>
                             )}
                         </div>
-                        {selectedChild && (<div className="md:hidden fixed bottom-0 inset-x-0 p-3 bg-white/90 backdrop-blur-sm border-t border-gray-100 z-30"><AdSlot placement="MOBILE_BANNER" /></div>)}
+                        {selectedChild && (
+                            <div className="md:hidden fixed bottom-0 inset-x-0 p-3 bg-white/90 backdrop-blur-sm border-t border-gray-100 z-30">
+                                {contextualFooterAd ? (
+                                    <a
+                                        href={contextualFooterAd.linkUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={() => trackAdEvent(`footer:${contextualFooterAd.id}`, "click", { slot: "contextual_footer_mobile" })}
+                                        className="flex items-center gap-3 rounded-xl border border-purple-200 bg-purple-50 px-3 py-2"
+                                    >
+                                        {contextualFooterAd.imageUrl ? (
+                                            <img src={contextualFooterAd.imageUrl} alt={contextualFooterAd.title} className="w-10 h-10 rounded-lg object-cover border border-purple-200" />
+                                        ) : (
+                                            <GiftIcon className="w-5 h-5 text-purple-600" />
+                                        )}
+                                        <div className="min-w-0">
+                                            <p className="text-[11px] font-bold text-purple-800 truncate">{contextualFooterAd.title}</p>
+                                            <p className="text-[10px] text-purple-600 truncate">{contextualFooterAd.description || "Oferta contextual para você"}</p>
+                                        </div>
+                                    </a>
+                                ) : (
+                                    <AdSlot placement="MOBILE_BANNER" />
+                                )}
+                            </div>
+                        )}
                     </div>
                 );
         }

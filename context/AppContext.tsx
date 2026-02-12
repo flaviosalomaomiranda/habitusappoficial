@@ -61,6 +61,7 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../src/lib/firebase";
 import { useFeedback } from "./FeedbackContext";
+import { bumpTagScores, inferSemanticTags } from "../utils/semanticTags";
 
 export interface RewardAvailability {
   isAvailable: boolean;
@@ -136,6 +137,11 @@ interface AppContextType {
   trackProfessionalEvent: (
     professionalId: string,
     eventType: "whatsapp_click" | "contact_click" | "location_click" | "favorite_add" | "routine_import",
+    metadata?: Record<string, any>
+  ) => void;
+  trackAdEvent: (
+    adId: string,
+    eventType: "impression" | "click",
     metadata?: Record<string, any>
   ) => void;
 
@@ -308,6 +314,7 @@ function parseFirestoreDocumentToRoutineTemplate(doc: any): RoutineTemplate | nu
     name: String(mapped.name),
     imageUrl: typeof mapped.imageUrl === "string" ? mapped.imageUrl : undefined,
     isActive: mapped.isActive !== false,
+    semanticTags: Array.isArray(mapped.semanticTags) ? mapped.semanticTags : undefined,
     uf: typeof mapped.uf === "string" ? mapped.uf : undefined,
     cityId: typeof mapped.cityId === "string" ? mapped.cityId : undefined,
     cityName: typeof mapped.cityName === "string" ? mapped.cityName : undefined,
@@ -348,6 +355,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       pin: null,
       adminPin: null,
       defaultMasterProfessionalId: null,
+      semanticTagScores: {},
     },
     ["kiddo-routines-settings"]
   );
@@ -596,7 +604,12 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   useEffect(() => {
     // limpa imediatamente para nao "vazar"
     setChildrenData([]);
-    setSettings((prev) => ({ ...prev, familyLocation: undefined, defaultMasterProfessionalId: null }));
+    setSettings((prev) => ({
+      ...prev,
+      familyLocation: undefined,
+      defaultMasterProfessionalId: null,
+      semanticTagScores: {},
+    }));
     if (!familyId) return;
 
     const unsubSettings = listenFamilySettings(familyId, (data) => {
@@ -604,6 +617,10 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
         ...prev,
         familyLocation: data?.familyLocation ?? undefined,
         defaultMasterProfessionalId: data?.defaultMasterProfessionalId ?? null,
+        semanticTagScores:
+          (data?.semanticTagScores && typeof data.semanticTagScores === "object")
+            ? data.semanticTagScores
+            : (prev.semanticTagScores || {}),
       }));
     });
 
@@ -655,6 +672,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
             name: data.name,
             imageUrl: data.imageUrl,
             isActive: data.isActive ?? true,
+            semanticTags: Array.isArray(data.semanticTags) ? data.semanticTags : undefined,
             uf: data.uf,
             cityId: data.cityId,
             cityName: data.cityName,
@@ -873,6 +891,14 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     );
   };
 
+  const saveSemanticTagScores = (scores: Record<string, number>) => {
+    setSettings((prev) => ({ ...prev, semanticTagScores: scores }));
+    if (!familyId) return;
+    updateFamilySettings(familyId, { semanticTagScores: scores }).catch((err) =>
+      console.error("Falha ao salvar semanticTagScores:", err)
+    );
+  };
+
   const updateSupportNetworkDefaultMasters = async (payload: {
     globalProfessionalId: string | null;
     byCityId: Record<string, string>;
@@ -970,6 +996,34 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       createdAt: serverTimestamp(),
       metadata,
     }).catch((err) => console.error("Falha ao registrar evento profissional:", err));
+  };
+
+  const trackAdEvent = (
+    adId: string,
+    eventType: "impression" | "click",
+    metadata: Record<string, any> = {}
+  ) => {
+    if (!adId) return;
+    const statField = eventType === "impression" ? "impressions" : "clicks";
+    setDoc(
+      doc(db, "supportAdStats", adId),
+      {
+        adId,
+        [statField]: increment(1),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    ).catch((err) => console.error("Falha ao incrementar métrica de anúncio:", err));
+
+    const user = auth.currentUser;
+    addDoc(collection(db, "supportAdEvents"), {
+      adId,
+      eventType,
+      userId: user?.uid ?? null,
+      userEmail: user?.email ?? null,
+      createdAt: serverTimestamp(),
+      metadata,
+    }).catch((err) => console.error("Falha ao registrar evento de anúncio:", err));
   };
 
   const activeSupportNetworkProfessionals = useMemo(() => {
@@ -1078,7 +1132,16 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     );
     if (habitExists) return;
 
-    const newHabit: Habit = { ...habitData, id: `habit-${crypto.randomUUID()}`, completions: {} };
+    const inferredTags = habitData.semanticTags && habitData.semanticTags.length > 0
+      ? habitData.semanticTags
+      : inferSemanticTags(habitData.name, habitData.category);
+    const newHabit: Habit = {
+      ...habitData,
+      id: `habit-${crypto.randomUUID()}`,
+      completions: {},
+      semanticTags: inferredTags,
+      source: habitData.source || "manual",
+    };
     const updatedChild: Child = { ...child, habits: [...child.habits, newHabit] };
 
     // otimista
@@ -1103,7 +1166,16 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
 
         addedToChildIds.push(child.id);
 
-        const newHabit: Habit = { ...habitData, id: `habit-${crypto.randomUUID()}`, completions: {} };
+        const inferredTags = habitData.semanticTags && habitData.semanticTags.length > 0
+          ? habitData.semanticTags
+          : inferSemanticTags(habitData.name, habitData.category);
+        const newHabit: Habit = {
+          ...habitData,
+          id: `habit-${crypto.randomUUID()}`,
+          completions: {},
+          semanticTags: inferredTags,
+          source: habitData.source || "manual",
+        };
         const updatedChild: Child = { ...child, habits: [...child.habits, newHabit] };
 
         // salva no Firestore
@@ -1185,6 +1257,8 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
 
     let starChange = 0;
     let isStarReward = false;
+    let semanticTagsDelta = 0;
+    let semanticTagsForHabit: string[] = [];
 
     const newHabits = child.habits.map((habit) => {
       if (habit.id !== habitId) return habit;
@@ -1197,10 +1271,15 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       if (currentStatus === "COMPLETED") {
         delete newCompletions[date];
         if (isStarReward) starChange = -habit.reward.value;
+        semanticTagsDelta = -1;
       } else {
         newCompletions[date] = "COMPLETED";
         if (isStarReward) starChange = habit.reward.value;
+        semanticTagsDelta = 1;
       }
+      semanticTagsForHabit = habit.semanticTags && habit.semanticTags.length > 0
+        ? habit.semanticTags
+        : inferSemanticTags(habit.name, habit.category);
 
       return { ...habit, completions: newCompletions };
     });
@@ -1219,6 +1298,10 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
 
     setChildrenData((prev) => prev.map((c) => (c.id === childId ? updatedChild : c)));
     saveChild(updatedChild);
+    if (semanticTagsDelta !== 0 && semanticTagsForHabit.length > 0) {
+      const nextScores = bumpTagScores(settings.semanticTagScores, semanticTagsForHabit, semanticTagsDelta);
+      saveSemanticTagScores(nextScores);
+    }
   };
 
   const getHabitsForChildOnDate = (childId: string, dateStr: string): Habit[] => {
@@ -1257,7 +1340,14 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
 
   const addRoutineTemplate = (templateData: Omit<RoutineTemplate, "id">) => {
     const id = `template-${crypto.randomUUID()}`;
-    const newTemplate: RoutineTemplate = { ...templateData, id };
+    const newTemplate: RoutineTemplate = {
+      ...templateData,
+      id,
+      semanticTags:
+        templateData.semanticTags && templateData.semanticTags.length > 0
+          ? templateData.semanticTags
+          : inferSemanticTags(templateData.name),
+    };
 
     setTemplatesData((prev) => [...prev, newTemplate]);
     const payload = stripUndefinedDeep({
@@ -1271,12 +1361,19 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     );
   };
   const updateRoutineTemplate = (template: RoutineTemplate) => {
-    setTemplatesData((prev) => prev.map((t) => (t.id === template.id ? template : t)));
-    const payload = stripUndefinedDeep({
+    const normalizedTemplate: RoutineTemplate = {
       ...template,
+      semanticTags:
+        template.semanticTags && template.semanticTags.length > 0
+          ? template.semanticTags
+          : inferSemanticTags(template.name),
+    };
+    setTemplatesData((prev) => prev.map((t) => (t.id === normalizedTemplate.id ? normalizedTemplate : t)));
+    const payload = stripUndefinedDeep({
+      ...normalizedTemplate,
       updatedAt: serverTimestamp(),
     });
-    setDoc(doc(db, "routineTemplatesGlobal", template.id), payload, { merge: true }).catch(
+    setDoc(doc(db, "routineTemplatesGlobal", normalizedTemplate.id), payload, { merge: true }).catch(
       (err) => console.error("Falha ao atualizar template:", err)
     );
   };
@@ -1288,10 +1385,25 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   };
 
   const addShopReward = (rewardData: Omit<ShopReward, "id">) => {
-    setShopRewardsData((prev) => [...prev, { ...rewardData, id: `reward-${Date.now()}` }]);
+    const withTags: ShopReward = {
+      ...rewardData,
+      id: `reward-${Date.now()}`,
+      semanticTags:
+        rewardData.semanticTags && rewardData.semanticTags.length > 0
+          ? rewardData.semanticTags
+          : inferSemanticTags(rewardData.name),
+    };
+    setShopRewardsData((prev) => [...prev, withTags]);
   };
   const updateShopReward = (reward: ShopReward) => {
-    setShopRewardsData((prev) => prev.map((r) => (r.id === reward.id ? reward : r)));
+    const withTags: ShopReward = {
+      ...reward,
+      semanticTags:
+        reward.semanticTags && reward.semanticTags.length > 0
+          ? reward.semanticTags
+          : inferSemanticTags(reward.name),
+    };
+    setShopRewardsData((prev) => prev.map((r) => (r.id === withTags.id ? withTags : r)));
   };
   const deleteShopReward = (rewardId: string) => {
     setShopRewardsData((prev) => prev.filter((r) => r.id !== rewardId));
@@ -1351,6 +1463,10 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       isDelivered: false,
     };
     setRedeemedRewardsData((prev) => [newRedemption, ...prev]);
+    if (reward.semanticTags && reward.semanticTags.length > 0) {
+      const nextScores = bumpTagScores(settings.semanticTagScores, reward.semanticTags, 2);
+      saveSemanticTagScores(nextScores);
+    }
 
     return true;
   };
@@ -1472,6 +1588,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     favoriteProfessionalIds,
     toggleFavoriteProfessional,
     trackProfessionalEvent,
+    trackAdEvent,
 
     supportNetworkProfessionals,
     activeSupportNetworkProfessionals,
