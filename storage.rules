@@ -44,6 +44,14 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    // ✅ imagens dos modelos globais de rotina
+    match /routine-templates/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin()
+        && request.resource.size <= 1500000
+        && request.resource.contentType.matches('image/.*');
+    }
+
     // Tudo o resto: somente leitura pública
     match /{allPaths=**} {
       allow read: if true;
