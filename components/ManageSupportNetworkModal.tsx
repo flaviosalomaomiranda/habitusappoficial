@@ -250,8 +250,9 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
 
     const professionalsForAdmin = React.useMemo(() => {
         const byId = new Map<string, Professional>();
-        supportNetworkProfessionals.forEach((p) => byId.set(p.id, p));
+        // Primeiro fallback da REST, depois estado principal (mais recente) sobrescreve.
         restProfessionals.forEach((p) => byId.set(p.id, p));
+        supportNetworkProfessionals.forEach((p) => byId.set(p.id, p));
         return Array.from(byId.values());
     }, [supportNetworkProfessionals, restProfessionals]);
     const availableUfs = Array.from(new Set(professionalsForAdmin.map((p) => p.uf).filter(Boolean))).sort();
