@@ -37,7 +37,7 @@ type DeletionInfo = {
     date: string;
 }
 
-type ParentView = 'dashboard' | 'recommendations' | 'supportNetwork' | 'favorites' | 'adminSupportNetwork' | 'adminRecommendations' | 'adminSupportNetworkPricing';
+type ParentView = 'dashboard' | 'recommendations' | 'supportNetwork' | 'favorites' | 'adminTemplates' | 'adminSupportNetwork' | 'adminRecommendations' | 'adminSupportNetworkPricing';
 
 interface ParentDashboardProps {
     onEnterTvMode: () => void;
@@ -570,12 +570,11 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
     const favoriteProfessionals = getFavoriteProfessionals();
     
     const [currentView, setCurrentView] = useState<ParentView>('dashboard');
-    const isAdminPanelView = currentView === 'adminSupportNetwork' || currentView === 'adminRecommendations' || currentView === 'adminSupportNetworkPricing';
+    const isAdminPanelView = currentView === 'adminTemplates' || currentView === 'adminSupportNetwork' || currentView === 'adminRecommendations' || currentView === 'adminSupportNetworkPricing';
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isAddChildModalOpen, setAddChildModalOpen] = useState(false);
     const [editingChild, setEditingChild] = useState<Child | null>(null);
     const [isAddHabitModalOpen, setAddHabitModalOpen] = useState(false);
-    const [isManageTemplatesModalOpen, setManageTemplatesModalOpen] = useState(false);
     const [isManageRewardsModalOpen, setManageRewardsModalOpen] = useState(false);
     const [confirmingDelete, setConfirmingDelete] = useState<DeletionInfo | null>(null);
     
@@ -832,7 +831,9 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                             <hr className="my-3" />
                         </div>
                     )}
-                <button onClick={() => { setManageTemplatesModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><ClipboardListIcon className="w-5 h-5 text-gray-500" /> Modelos de Rotina</button>
+                {isAdmin ? (
+                    <button onClick={() => { setCurrentView('adminTemplates'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><ClipboardListIcon className="w-5 h-5 text-gray-500" /> Gerenciar Rotinas</button>
+                ) : null}
                 {!isAdmin && (
                     <button onClick={() => { setProgressModalOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><ChartBarIcon className="w-5 h-5 text-gray-500" /> Quadro de Progresso</button>
                 )}
@@ -909,6 +910,9 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
             case "adminSupportNetwork":
                 if (!isAdmin && !isManager) return <div className="p-6 text-sm text-gray-500">Sem permissão.</div>;
                 return <ManageSupportNetworkModal embedded onClose={() => setCurrentView("dashboard")} />;
+            case "adminTemplates":
+                if (!isAdmin) return <div className="p-6 text-sm text-gray-500">Sem permissão.</div>;
+                return <ManageTemplatesModal embedded onClose={() => setCurrentView("dashboard")} />;
             case "adminRecommendations":
                 if (!isAdmin) return <div className="p-6 text-sm text-gray-500">Sem permissão.</div>;
                 return <ManageRecommendationsModal embedded onClose={() => setCurrentView("dashboard")} />;
@@ -1217,7 +1221,6 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                 onHabitExists={() => showToast('Este hábito já existe para as pessoas selecionadas.', 'warning')}
                 onNoChildSelected={() => showToast('Selecione pelo menos 1 pessoa.', 'error')}
             />}
-            {isManageTemplatesModalOpen && <ManageTemplatesModal onClose={() => setManageTemplatesModalOpen(false)} />}
             {isManageRewardsModalOpen && <ManageRewardsModal onClose={() => setManageRewardsModalOpen(false)} />}
             {isProgressModalOpen && <ProgressDashboardModal onClose={() => setProgressModalOpen(false)} />}
             {isRewardShopOpen && selectedChild && <ParentRewardShopModal child={selectedChild} onClose={() => setRewardShopOpen(false)} />}

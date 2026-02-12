@@ -288,7 +288,6 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
 
   // ✅ Templates agora vêm do Firestore (com migração do localStorage)
   const [templatesData, setTemplatesData] = useState<RoutineTemplate[]>([]);
-  const templatesSeededRef = useRef(false);
 
   const [shopRewardsData, setShopRewardsData] = useLocalStorage<ShopReward[]>(
     storageKey("kiddo-routines-shop-rewards"),
@@ -498,8 +497,6 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     setChildrenData([]);
     setSettings((prev) => ({ ...prev, familyLocation: undefined, defaultMasterProfessionalId: null }));
     setTemplatesData([]);
-    templatesSeededRef.current = false;
-
     if (!familyId) return;
 
     const unsubSettings = listenFamilySettings(familyId, (data) => {
@@ -528,57 +525,36 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       setChildrenData(kids);
     });
 
-    const templatesRef = collection(db, "families", familyId, "routineTemplates");
-    const unsubTemplates = onSnapshot(templatesRef, (snap) => {
-      const templates = snap.docs.map((d) => {
-        const data = d.data() as any;
-        return {
-          id: d.id,
-          name: data.name,
-          icon: data.icon,
-          reward: data.reward,
-          schedule: data.schedule,
-        } as RoutineTemplate;
-      });
-      setTemplatesData(templates);
-
-      if (!templatesSeededRef.current) {
-        if (templates.length > 0) {
-          templatesSeededRef.current = true;
-          return;
-        }
-
-        const legacyTemplates =
-          readLocalStorageJson<RoutineTemplate[]>([
-            `kiddo-routines-templates:${familyId}`,
-            "kiddo-routines-templates",
-          ]) ?? [];
-
-        if (legacyTemplates.length === 0) {
-          templatesSeededRef.current = true;
-          return;
-        }
-
-        templatesSeededRef.current = true;
-        legacyTemplates.forEach((template) => {
-          const payload = stripUndefinedDeep({
-            ...template,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-          setDoc(doc(db, "families", familyId, "routineTemplates", template.id), payload, {
-            merge: true,
-          }).catch((err) => console.error("Falha ao migrar template:", err));
-        });
-      }
-    });
-
     return () => {
       unsubSettings();
       unsubKids();
-      unsubTemplates();
     };
   }, [familyId, setSettings]);
+
+  useEffect(() => {
+    const templatesRef = collection(db, "routineTemplatesGlobal");
+    const unsubTemplates = onSnapshot(
+      templatesRef,
+      (snap) => {
+        const templates = snap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            name: data.name,
+            icon: data.icon,
+            reward: data.reward,
+            schedule: data.schedule,
+          } as RoutineTemplate;
+        });
+        setTemplatesData(templates);
+      },
+      (err) => {
+        console.error("Falha ao carregar modelos globais:", err);
+      }
+    );
+
+    return () => unsubTemplates();
+  }, []);
 
   /** ? Helper pra salvar child (merge) */
   const saveChild = (child: Child) => {
@@ -1060,7 +1036,6 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   // ============================================================
 
   const addRoutineTemplate = (templateData: Omit<RoutineTemplate, "id">) => {
-    if (!familyId) return;
     const id = `template-${crypto.randomUUID()}`;
     const newTemplate: RoutineTemplate = { ...templateData, id };
 
@@ -1071,25 +1046,23 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       updatedAt: serverTimestamp(),
     });
 
-    setDoc(doc(db, "families", familyId, "routineTemplates", id), payload, { merge: true }).catch(
+    setDoc(doc(db, "routineTemplatesGlobal", id), payload, { merge: true }).catch(
       (err) => console.error("Falha ao salvar template:", err)
     );
   };
   const updateRoutineTemplate = (template: RoutineTemplate) => {
-    if (!familyId) return;
     setTemplatesData((prev) => prev.map((t) => (t.id === template.id ? template : t)));
     const payload = stripUndefinedDeep({
       ...template,
       updatedAt: serverTimestamp(),
     });
-    setDoc(doc(db, "families", familyId, "routineTemplates", template.id), payload, { merge: true }).catch(
+    setDoc(doc(db, "routineTemplatesGlobal", template.id), payload, { merge: true }).catch(
       (err) => console.error("Falha ao atualizar template:", err)
     );
   };
   const deleteRoutineTemplate = (templateId: string) => {
-    if (!familyId) return;
     setTemplatesData((prev) => prev.filter((t) => t.id !== templateId));
-    deleteDoc(doc(db, "families", familyId, "routineTemplates", templateId)).catch((err) =>
+    deleteDoc(doc(db, "routineTemplatesGlobal", templateId)).catch((err) =>
       console.error("Falha ao excluir template:", err)
     );
   };

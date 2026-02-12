@@ -26,6 +26,12 @@ service cloud.firestore {
       allow write: if isAdminEmail();
     }
 
+    // Modelos globais de rotina definidos pelo admin
+    match /routineTemplatesGlobal/{docId} {
+      allow read: if true;
+      allow write: if isAdminEmail();
+    }
+
     // Demais coleções do app exigem autenticação
     match /{document=**} {
       allow read, write: if isSignedIn();

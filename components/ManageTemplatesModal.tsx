@@ -10,9 +10,10 @@ import { formatSchedule } from '../utils/dateUtils';
 
 interface ManageTemplatesModalProps {
   onClose: () => void;
+  embedded?: boolean;
 }
 
-const ManageTemplatesModal: React.FC<ManageTemplatesModalProps> = ({ onClose }) => {
+const ManageTemplatesModal: React.FC<ManageTemplatesModalProps> = ({ onClose, embedded = false }) => {
   const { routineTemplates, deleteRoutineTemplate } = useAppContext();
   const [editingTemplate, setEditingTemplate] = useState<RoutineTemplate | null>(null);
   const [isAdding, setIsAdding] = useState(false);
@@ -34,10 +35,10 @@ const ManageTemplatesModal: React.FC<ManageTemplatesModalProps> = ({ onClose }) 
 
   return (
     <>
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-2xl m-4 flex flex-col" style={{ maxHeight: '90vh' }}>
+    <div className={embedded ? "w-full" : "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"}>
+      <div className={`bg-white rounded-lg shadow-xl p-8 w-full max-w-2xl m-4 flex flex-col ${embedded ? "mx-auto my-0" : ""}`} style={{ maxHeight: embedded ? 'calc(100vh - 140px)' : '90vh' }}>
         <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold">Gerenciar Modelos de Rotina</h2>
+            <h2 className="text-2xl font-bold">Gerenciar Rotinas</h2>
             <button onClick={handleAddNew} className="bg-green-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors">
                 <PlusIcon />
                 Novo Modelo
