@@ -186,12 +186,12 @@ const SupportSpotlightCard: React.FC<{
                     className={`object-cover rounded-full border border-white/20 shadow-sm transition-all ${isCollapsed ? 'w-10 h-10' : 'w-14 h-14'}`}
                 />
                 <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                        <h4 className={`font-bold truncate ${isCollapsed ? 'text-sm' : 'text-base'} ${type === 'master' || type === 'pro' ? 'text-white' : 'text-gray-800'}`}>
-                            {prof.name}
-                        </h4>
-                        <span className={`text-[10px] opacity-70 truncate`}>• {getSpecialtiesLabel(prof)}</span>
-                    </div>
+                    <h4 className={`font-bold truncate ${isCollapsed ? 'text-sm' : 'text-base'} ${type === 'master' || type === 'pro' ? 'text-white' : 'text-gray-800'}`}>
+                        {prof.name}
+                    </h4>
+                    <p className={`text-[10px] sm:text-xs truncate ${type === 'master' || type === 'pro' ? 'text-purple-100' : 'text-gray-500'}`}>
+                        {getSpecialtiesLabel(prof)}
+                    </p>
                     <p className={`text-[9px] flex items-center gap-1 ${type === 'master' || type === 'pro' ? 'text-purple-200' : 'text-gray-400'}`}>
                         <MapPinIcon className="w-2.5 h-2.5"/> {prof.city} - {prof.uf}
                     </p>
@@ -227,19 +227,7 @@ const SupportSpotlightCard: React.FC<{
                                             : 'bg-purple-600 text-white hover:bg-purple-700'
                                 }`}
                             >
-                                Entrar em contato
-                            </a>
-                        )}
-                        {prof.contacts.maps && (
-                            <a
-                                href={prof.contacts.maps}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={`px-3 flex items-center justify-center rounded-lg border ${
-                                    type === 'master' || type === 'pro' ? 'border-white/30 text-white hover:bg-white/10' : 'border-gray-200 bg-gray-50 text-gray-700'
-                                }`}
-                            >
-                                <span className="text-[9px] font-bold uppercase">Localização</span>
+                                Contato
                             </a>
                         )}
                         {type === "exclusive" && (
@@ -247,14 +235,18 @@ const SupportSpotlightCard: React.FC<{
                                 <span className="text-[9px] font-bold uppercase">Rotinas</span>
                             </button>
                         )}
-                        
-                        {prof.videoUrl && (
-                            <a href={prof.videoUrl} target="_blank" rel="noopener noreferrer" className={`px-3 flex items-center justify-center rounded-lg border ${
-                                type === 'master' || type === 'pro' ? 'border-white/30 text-white hover:bg-white/10' : 'border-red-100 bg-red-50 text-red-600'
-                            }`}>
-                               <span className="text-[9px] font-bold uppercase">Vídeos</span>
-                            </a>
-                        )}
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onOpenNetwork();
+                            }}
+                            className={`px-3 flex items-center justify-center rounded-lg border ${
+                                type === 'master' || type === 'pro' ? 'border-white/30 text-white hover:bg-white/10' : 'border-gray-200 bg-gray-50 text-gray-700'
+                            }`}
+                        >
+                            <span className="text-[9px] font-bold uppercase">Perfil</span>
+                        </button>
                     </div>
                 </div>
             )}
@@ -269,11 +261,16 @@ const SupportSpotlightCard: React.FC<{
                             rel="noopener noreferrer"
                             className={`flex-1 text-center font-bold text-[10px] py-1 rounded-md bg-green-500 text-white`}
                         >
-                            Entrar em contato
+                            Contato
                         </a>
                     )}
+                    {type === "exclusive" && (
+                        <button type="button" className={`px-2 py-1 text-[10px] font-bold rounded-md border ${type === 'master' ? 'border-white/30 text-white' : 'border-gray-200 text-gray-500'}`}>
+                            Rotinas
+                        </button>
+                    )}
                     <button onClick={onOpenNetwork} className={`px-2 py-1 text-[10px] font-bold rounded-md border ${type === 'master' ? 'border-white/30 text-white' : 'border-gray-200 text-gray-500'}`}>
-                        Ver Rede
+                        Perfil
                     </button>
                 </div>
             )}
