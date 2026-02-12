@@ -726,40 +726,21 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
         );
     };
 
-    const getServiceProfessionalForSlot = (slotIndex: number): Professional | null => {
-        const hasPro = cityProProfessionals.length > 0;
-        const hasExclusive = cityExclusiveProfessionals.length > 0;
-        if (!hasPro && !hasExclusive) return null;
+    const serviceSpotlightSequence = useMemo(() => {
+        const sequence: Professional[] = [];
+        const maxLen = Math.max(cityExclusiveProfessionals.length, cityProProfessionals.length);
+        for (let i = 0; i < maxLen; i += 1) {
+            if (cityExclusiveProfessionals[i]) sequence.push(cityExclusiveProfessionals[i]);
+            if (cityProProfessionals[i]) sequence.push(cityProProfessionals[i]);
+        }
+        return sequence;
+    }, [cityExclusiveProfessionals, cityProProfessionals]);
 
+    const dailyServiceProfessional = useMemo(() => {
+        if (serviceSpotlightSequence.length === 0) return null;
         const dayIndex = Math.floor(new Date(todayStr + "T00:00:00").getTime() / 86400000);
-        const totalPool = cityProProfessionals.length + cityExclusiveProfessionals.length;
-
-        // Com 1 ou 2 profissionais, mostra no máximo 1 vez cada (sem repetição).
-        if (totalPool <= 2) {
-            if (slotIndex >= totalPool) return null;
-            if (hasExclusive && hasPro) {
-                if (slotIndex === 0) return cityExclusiveProfessionals[dayIndex % cityExclusiveProfessionals.length];
-                return cityProProfessionals[dayIndex % cityProProfessionals.length];
-            }
-            const list = hasExclusive ? cityExclusiveProfessionals : cityProProfessionals;
-            return list[(slotIndex + dayIndex) % list.length] ?? null;
-        }
-
-        const preferExclusive = slotIndex % 2 === 0;
-
-        if (hasPro && hasExclusive) {
-            if (preferExclusive) {
-                const idx = (Math.floor(slotIndex / 2) + dayIndex) % cityExclusiveProfessionals.length;
-                return cityExclusiveProfessionals[idx];
-            }
-            const idx = (Math.floor(slotIndex / 2) + dayIndex) % cityProProfessionals.length;
-            return cityProProfessionals[idx];
-        }
-
-        const list = hasPro ? cityProProfessionals : cityExclusiveProfessionals;
-        return list[(slotIndex + dayIndex) % list.length];
-    };
-    const servicePoolCount = cityProProfessionals.length + cityExclusiveProfessionals.length;
+        return serviceSpotlightSequence[dayIndex % serviceSpotlightSequence.length] ?? null;
+    }, [serviceSpotlightSequence, todayStr]);
 
     const renderServiceSpotlight = (professional: Professional | null, { inline = false }: { inline?: boolean } = {}) => {
         if (!professional) return null;
@@ -1074,24 +1055,23 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                 const swipeProgress = Math.min(1, swipeOffset / SWIPE_COMPLETE_THRESHOLD);
 
                                                 // Mobile: 1 bloco profissional a cada 3 rotinas
-                                                const supportInsertionIndex = Math.floor(index / 3);
-                                                const shouldInsertSupportMobile = (index + 1) % 3 === 0;
+                                                const shouldInsertSupportMobile = (index + 1) % 3 === 0 && Math.floor(index / 3) === 0;
                                                 const supportProfessionalMobile = shouldInsertSupportMobile
-                                                    ? (servicePoolCount <= 2 && supportInsertionIndex > servicePoolCount - 1 ? null : getServiceProfessionalForSlot(supportInsertionIndex))
+                                                    ? dailyServiceProfessional
                                                     : null;
 
                                                 // Desktop md (2 colunas): após cada 3 linhas = 6 rotinas
                                                 const desktopMdSlotIndex = Math.floor((index + 1) / 6) - 1;
-                                                const shouldInsertSupportDesktopMd = (index + 1) % 6 === 0;
+                                                const shouldInsertSupportDesktopMd = (index + 1) % 6 === 0 && desktopMdSlotIndex === 0;
                                                 const supportProfessionalDesktopMd = shouldInsertSupportDesktopMd
-                                                    ? (servicePoolCount <= 2 && desktopMdSlotIndex > servicePoolCount - 1 ? null : getServiceProfessionalForSlot(desktopMdSlotIndex))
+                                                    ? dailyServiceProfessional
                                                     : null;
 
                                                 // Desktop xl (3 colunas): após cada 3 linhas = 9 rotinas
                                                 const desktopXlSlotIndex = Math.floor((index + 1) / 9) - 1;
-                                                const shouldInsertSupportDesktopXl = (index + 1) % 9 === 0;
+                                                const shouldInsertSupportDesktopXl = (index + 1) % 9 === 0 && desktopXlSlotIndex === 0;
                                                 const supportProfessionalDesktopXl = shouldInsertSupportDesktopXl
-                                                    ? (servicePoolCount <= 2 && desktopXlSlotIndex > servicePoolCount - 1 ? null : getServiceProfessionalForSlot(desktopXlSlotIndex))
+                                                    ? dailyServiceProfessional
                                                     : null;
                                                 return (
                                                     <React.Fragment key={habit.id}>
