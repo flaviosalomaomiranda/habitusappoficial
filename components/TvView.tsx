@@ -127,7 +127,11 @@ const TvView: React.FC<TvViewProps> = ({ onExitToParent }) => {
                             )}
                             <div className={`transition-opacity duration-300 ${isCompleted ? 'opacity-50' : 'opacity-60'}`}>
                                 <div className={`inline-flex items-center justify-center p-2 rounded-xl ${iconBgClass}`}>
-                                    <Icon className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 ${iconClass}`} />
+                                    {habit.imageUrl ? (
+                                        <img src={habit.imageUrl} alt={habit.name} className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-lg object-cover" />
+                                    ) : (
+                                        <Icon className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 ${iconClass}`} />
+                                    )}
                                 </div>
                             </div>
                             <h2 className="mt-2 text-sm sm:text-base font-semibold line-clamp-2">{habit.name}</h2>

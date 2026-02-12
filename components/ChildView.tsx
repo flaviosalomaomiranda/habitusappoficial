@@ -47,7 +47,11 @@ const ChildView: React.FC<ChildViewProps> = ({ child, onSwitchToParent }) => {
                         }`}>
                             <div>
                                 <div className={`inline-flex items-center justify-center p-4 rounded-3xl ${iconBgClass}`}>
-                                    <Icon className={`w-24 h-24 sm:w-28 sm:h-28 ${iconClass}`} />
+                                    {habit.imageUrl ? (
+                                        <img src={habit.imageUrl} alt={habit.name} className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover" />
+                                    ) : (
+                                        <Icon className={`w-24 h-24 sm:w-28 sm:h-28 ${iconClass}`} />
+                                    )}
                                 </div>
                                 <h2 className="mt-4 text-3xl font-semibold">{habit.name}</h2>
                             </div>

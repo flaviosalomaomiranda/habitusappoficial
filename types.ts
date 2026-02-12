@@ -47,6 +47,7 @@ export interface Habit {
   id: string;
   name:string;
   icon: IconName;
+  imageUrl?: string;
   category?: HabitCategory;
   schedule: HabitSchedule;
   reward: Reward;

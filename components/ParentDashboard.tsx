@@ -1105,7 +1105,11 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                             >
                                                                 <div className="flex items-center gap-2 flex-1 min-w-0">
                                                                     <div className={`p-2 rounded-lg ${iconClasses}`}>
-                                                                        <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                                        {habit.imageUrl ? (
+                                                                            <img src={habit.imageUrl} alt={habit.name} className="w-4 h-4 sm:w-5 sm:h-5 rounded object-cover" />
+                                                                        ) : (
+                                                                            <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                                        )}
                                                                     </div>
                                                                     <div className="flex-1">
                                                                         <span className={`text-sm sm:text-[13px] font-bold block leading-snug ${isCompleted ? 'text-green-800' : 'text-gray-800'}`}>{habit.name}</span>

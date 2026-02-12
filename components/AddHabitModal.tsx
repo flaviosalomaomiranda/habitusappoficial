@@ -99,6 +99,7 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({
           const templateHabitData: Omit<Habit, 'id' | 'completions'> = {
             name: template.name.trim(),
             icon: 'Sparkles',
+            imageUrl: template.imageUrl,
             schedule: { type: 'DAILY' },
             startDate: viewedDate,
             reward: { type: RewardType.STARS, value: 1 },
