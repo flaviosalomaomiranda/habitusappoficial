@@ -28,7 +28,7 @@ import ManageFamilyMembersModal from './ManageFamilyMembersModal';
 import ManageManagersModal from './ManageManagersModal';
 import { HABIT_ICONS, getHabitCategoryStyle } from '../constants';
 import { StarIcon } from './icons/HabitIcons';
-import { getTodayDateString, formatSchedule, calculateAge, daysUntilNextBirthday } from '../utils/dateUtils';
+import { getTodayDateString, calculateAge, daysUntilNextBirthday } from '../utils/dateUtils';
 
 type DeletionInfo = {
     childId: string;
@@ -1103,23 +1103,17 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                                 onTouchEnd={canSwipeToComplete ? () => endHabitSwipe(habit.id) : undefined}
                                                                 onTouchCancel={canSwipeToComplete ? () => endHabitSwipe(habit.id) : undefined}
                                                             >
-                                                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                                    <div className={`p-2 rounded-lg ${iconClasses}`}>
+                                                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                                    <div className={`h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex items-center justify-center ${iconClasses}`}>
                                                                         {habit.imageUrl ? (
-                                                                            <img src={habit.imageUrl} alt={habit.name} className="w-4 h-4 sm:w-5 sm:h-5 rounded object-cover" />
+                                                                            <img src={habit.imageUrl} alt={habit.name} className="w-full h-full object-cover" />
                                                                         ) : (
-                                                                            <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                                            <Icon className="w-6 h-6 sm:w-7 sm:h-7" />
                                                                         )}
                                                                     </div>
                                                                     <div className="flex-1">
                                                                         <span className={`text-sm sm:text-[13px] font-bold block leading-snug ${isCompleted ? 'text-green-800' : 'text-gray-800'}`}>{habit.name}</span>
-                                                                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 sm:gap-x-2 text-[10px] text-gray-500">
-                                                                            <span className="font-medium">{formatSchedule(habit.schedule)}</span>
-                                                                            {habit.category && categoryStyle && (
-                                                                                <span className={`hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${categoryStyle.badge}`}>
-                                                                                    {habit.category}
-                                                                                </span>
-                                                                            )}
+                                                                        <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-500">
                                                                             <span className={`${rewardClass} font-bold flex items-center gap-0.5`}>
                                                                                 {habit.reward.type === 'STARS' ? `+${habit.reward.value}` : habit.reward.activityName}
                                                                                 {habit.reward.type === 'STARS' && <StarIcon className="w-3.5 h-3.5" />}
