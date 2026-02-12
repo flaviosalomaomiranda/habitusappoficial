@@ -802,50 +802,45 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
 
     const SidebarActions = () => (
         <div className="flex flex-col h-full">
-            <div className="p-4">
-                <h2 className="text-xl font-bold text-gray-800 mb-2">Acoes Gerais</h2>
-                <p className="text-sm text-gray-500">Gerencie pessoas, habitos e Rede de Serviços Profissionais.</p>
-            </div>
-                <div className="flex-grow overflow-y-auto px-4 space-y-2 pb-4">
+                <div className="flex-grow overflow-y-auto px-4 pt-4 space-y-2 pb-4">
                     {isAdmin && (
-                        <div className="mb-2">
-                            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Administração</div>
+                        <div className="mb-3 rounded-2xl border border-purple-200 bg-purple-50 p-3">
+                            <div className="text-[11px] font-bold text-purple-700 uppercase tracking-widest mb-2">Painel Admin</div>
                             <button
                                 onClick={() => { setCurrentView('adminSupportNetwork'); setIsMenuOpen(false); }}
-                                className="w-full flex items-center gap-4 p-3 bg-purple-50 text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm"
+                                className="w-full flex items-center gap-4 p-3 bg-white text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm border border-purple-200"
                             >
                                 <UsersIcon className="w-5 h-5 text-purple-500" />
                                 Adicionar Profissional
                             </button>
                             <button
                                 onClick={() => { setManageManagersModalOpen(true); setIsMenuOpen(false); }}
-                                className="mt-2 w-full flex items-center gap-4 p-3 bg-purple-50 text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm"
+                                className="mt-2 w-full flex items-center gap-4 p-3 bg-white text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm border border-purple-200"
                             >
                                 <UsersIcon className="w-5 h-5 text-purple-500" />
                                 Adicionar Gerente
                             </button>
                             <button
                                 onClick={() => { setCurrentView('adminSupportNetworkPricing'); setIsMenuOpen(false); }}
-                                className="mt-2 w-full flex items-center gap-4 p-3 bg-purple-50 text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm"
+                                className="mt-2 w-full flex items-center gap-4 p-3 bg-white text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm border border-purple-200"
                             >
                                 <ClipboardListIcon className="w-5 h-5 text-purple-500" />
                                 Precificação de Planos
                             </button>
                             <button
                                 onClick={() => { setCurrentView('adminMasterDefaults'); setIsMenuOpen(false); }}
-                                className="mt-2 w-full flex items-center gap-4 p-3 bg-purple-50 text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm"
+                                className="mt-2 w-full flex items-center gap-4 p-3 bg-white text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm border border-purple-200"
                             >
                                 <UsersIcon className="w-5 h-5 text-purple-500" />
                                 Master Default
                             </button>
                             <button
                                 onClick={() => { setCurrentView('adminRecommendations'); setIsMenuOpen(false); }}
-                                className="mt-2 w-full flex items-center gap-4 p-3 bg-purple-50 text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm"
+                                className="mt-2 w-full flex items-center gap-4 p-3 bg-white text-purple-800 rounded-xl hover:bg-purple-100 transition-colors font-semibold text-sm border border-purple-200"
                             >
                                 <GiftIcon className="w-5 h-5 text-purple-500" />
                                 Gerenciar Shopping
                             </button>
-                            <hr className="my-3" />
                         </div>
                     )}
                 {isAdmin ? (
@@ -907,7 +902,7 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                 >
                     Sair / Trocar conta
                 </button>
-                <AdSlot placement="SIDEBAR" />
+                {!isAdmin && <AdSlot placement="SIDEBAR" />}
             </div>
         </div>
     );
@@ -1264,10 +1259,8 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                     <h1 className="text-2xl font-bold text-purple-700">Habitus App</h1>
                 </div>
 
+                {!isAdmin && (
                 <div className="border-t border-gray-100 p-4">
-                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
-                        Pessoas
-                    </h3>
 
                     <div className={children.length > 3 ? "max-h-[210px] overflow-y-auto pr-1" : ""}>
                         <nav className="space-y-1">
@@ -1309,6 +1302,7 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                         </button>
                     )}
                 </div>
+                )}
 
                 <div className="border-t border-gray-100 flex-1 overflow-y-auto">
                     <SidebarActions />
