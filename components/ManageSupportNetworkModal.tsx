@@ -6,7 +6,7 @@ import { getStates, getCitiesByState, UF, Municipio } from '../services/ibgeServ
 import { SPECIALTIES } from '../data/supportNetworkData';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/lib/firebase';
-import { collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { db } from '../src/lib/firebase';
 
 interface ManageSupportNetworkModalProps {
@@ -186,6 +186,9 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const todayStr = new Date().toISOString().slice(0, 10);
     const [restProfessionals, setRestProfessionals] = useState<Professional[]>([]);
+    const [filterUf, setFilterUf] = useState("");
+    const [filterTier, setFilterTier] = useState<"" | "master" | "top" | "exclusive" | "verified">("");
+    const [reportProfessional, setReportProfessional] = useState<Professional | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -225,6 +228,7 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
     }, []);
 
     const professionalsForAdmin = supportNetworkProfessionals.length > 0 ? supportNetworkProfessionals : restProfessionals;
+    const availableUfs = Array.from(new Set(professionalsForAdmin.map((p) => p.uf).filter(Boolean))).sort();
 
     const getStatusLabel = (prof: Professional) => {
         const todayStart = new Date(todayStr + "T00:00:00");
@@ -379,6 +383,29 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                         </>
                     )}
                 </div>
+                <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <select
+                        value={filterUf}
+                        onChange={(e) => setFilterUf(e.target.value)}
+                        className="p-2 border rounded bg-white"
+                    >
+                        <option value="">Filtrar por Estado (todos)</option>
+                        {availableUfs.map((uf) => (
+                            <option key={uf} value={uf}>{uf}</option>
+                        ))}
+                    </select>
+                    <select
+                        value={filterTier}
+                        onChange={(e) => setFilterTier((e.target.value || "") as any)}
+                        className="p-2 border rounded bg-white"
+                    >
+                        <option value="">Filtrar por Categoria (todas)</option>
+                        <option value="master">MASTER</option>
+                        <option value="top">PRO</option>
+                        <option value="exclusive">EXCLUSIVO</option>
+                        <option value="verified">LISTADO</option>
+                    </select>
+                </div>
 
                 {(() => {
                     const expiring = supportNetworkProfessionals
@@ -411,6 +438,8 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                                     if (!isManager || !managerProfile) return true;
                                     return prof.uf === managerProfile.uf && managerProfile.cityIds.includes(String(prof.cityId));
                                 })
+                                .filter((prof) => !filterUf || prof.uf === filterUf)
+                                .filter((prof) => !filterTier || prof.tier === filterTier)
                                 .map(prof => (
                                 <tr key={prof.id} className="border-b hover:bg-gray-50">
                                     <td className="p-2 font-medium">{prof.name}</td>
@@ -437,6 +466,7 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                                     </td>
                                     <td className="space-x-2">
                                         <button onClick={() => { setEditingProfessional(prof); setIsFormOpen(true); }} className="text-purple-600 font-semibold">Editar</button>
+                                        <button onClick={() => setReportProfessional(prof)} className="text-blue-600 font-semibold">Relatório</button>
                                         {!isManager ? (
                                             <button
                                                 onClick={() => {
@@ -487,11 +517,121 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                         isManager={isManager}
                     />
                 )}
+                {reportProfessional && (
+                    <ProfessionalReportModal
+                        professional={reportProfessional}
+                        onClose={() => setReportProfessional(null)}
+                    />
+                )}
             </div>
         </div>
     );
 };
 
+
+interface ProfessionalReportModalProps {
+    professional: Professional;
+    onClose: () => void;
+}
+
+const ProfessionalReportModal: React.FC<ProfessionalReportModalProps> = ({ professional, onClose }) => {
+    const [loading, setLoading] = useState(true);
+    const [stats, setStats] = useState<Record<string, number>>({});
+    const [events, setEvents] = useState<Array<{ eventType: string; userEmail?: string | null; createdAt?: any }>>([]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const run = async () => {
+            try {
+                setLoading(true);
+                const statsSnap = await getDoc(doc(db, "supportNetworkStats", professional.id));
+                const statsData = (statsSnap.data() || {}) as Record<string, any>;
+
+                const eventsQ = query(
+                    collection(db, "supportNetworkEvents"),
+                    where("professionalId", "==", professional.id),
+                    limit(100)
+                );
+                const eventsSnap = await getDocs(eventsQ);
+                const rawEvents = eventsSnap.docs.map((d) => d.data() as any);
+                const sortedEvents = rawEvents.sort((a, b) => {
+                    const aTime = a?.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+                    const bTime = b?.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+                    return bTime - aTime;
+                });
+
+                if (cancelled) return;
+                setStats({
+                    whatsappClicks: Number(statsData.whatsappClicks || 0),
+                    contactClicks: Number(statsData.contactClicks || 0),
+                    locationClicks: Number(statsData.locationClicks || 0),
+                    favoriteAdds: Number(statsData.favoriteAdds || 0),
+                    routineImportClicks: Number(statsData.routineImportClicks || 0),
+                });
+                setEvents(sortedEvents);
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        };
+        run().catch(() => {
+            if (!cancelled) setLoading(false);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [professional.id]);
+
+    const eventLabel = (type: string) => {
+        if (type === "whatsapp_click") return "Clique WhatsApp";
+        if (type === "contact_click") return "Clique Contato";
+        if (type === "location_click") return "Clique Localização";
+        if (type === "favorite_add") return "Novo Favorito";
+        if (type === "routine_import") return "Clique em Rotinas Personalizadas";
+        return type;
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-5 max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold">Relatório: {professional.name}</h3>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800">Fechar</button>
+                </div>
+                {loading ? (
+                    <p className="text-sm text-gray-500">Carregando...</p>
+                ) : (
+                    <>
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-5">
+                            <div className="bg-green-50 rounded-lg p-3"><div className="text-[11px] text-gray-500">WhatsApp</div><div className="text-lg font-bold">{stats.whatsappClicks || 0}</div></div>
+                            <div className="bg-cyan-50 rounded-lg p-3"><div className="text-[11px] text-gray-500">Contato</div><div className="text-lg font-bold">{stats.contactClicks || 0}</div></div>
+                            <div className="bg-blue-50 rounded-lg p-3"><div className="text-[11px] text-gray-500">Localização</div><div className="text-lg font-bold">{stats.locationClicks || 0}</div></div>
+                            <div className="bg-pink-50 rounded-lg p-3"><div className="text-[11px] text-gray-500">Favoritos</div><div className="text-lg font-bold">{stats.favoriteAdds || 0}</div></div>
+                            <div className="bg-purple-50 rounded-lg p-3"><div className="text-[11px] text-gray-500">Rotinas</div><div className="text-lg font-bold">{stats.routineImportClicks || 0}</div></div>
+                        </div>
+                        <div>
+                            <h4 className="font-semibold mb-2">Últimos eventos</h4>
+                            {events.length === 0 ? (
+                                <p className="text-sm text-gray-500">Sem eventos ainda.</p>
+                            ) : (
+                                <ul className="space-y-1 text-sm">
+                                    {events.slice(0, 20).map((evt, idx) => {
+                                        const dt = evt.createdAt?.toDate ? evt.createdAt.toDate() : null;
+                                        return (
+                                            <li key={`${evt.eventType}-${idx}`} className="flex items-center justify-between border-b py-1">
+                                                <span>{eventLabel(evt.eventType)}</span>
+                                                <span className="text-xs text-gray-500">{evt.userEmail || "usuário"} {dt ? `• ${dt.toLocaleString("pt-BR")}` : ""}</span>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            )}
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
 
 // Form Component
 interface ProfessionalFormProps {

@@ -40,6 +40,7 @@ import { PRODUCTS_SEED } from "../data/products";
 // ✅ Firestore
 import {
   collection,
+  addDoc,
   doc,
   setDoc,
   deleteDoc,
@@ -48,6 +49,7 @@ import {
   query,
   where,
   limit,
+  increment,
 } from "firebase/firestore";
 
 import { db } from "../src/lib/firebase";
@@ -132,6 +134,11 @@ interface AppContextType {
 
   favoriteProfessionalIds: string[];
   toggleFavoriteProfessional: (professionalId: string) => void;
+  trackProfessionalEvent: (
+    professionalId: string,
+    eventType: "whatsapp_click" | "contact_click" | "location_click" | "favorite_add" | "routine_import",
+    metadata?: Record<string, any>
+  ) => void;
 
   supportNetworkProfessionals: Professional[];
   activeSupportNetworkProfessionals: Professional[];
@@ -829,6 +836,42 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     ).catch((err) => console.error("Falha ao salvar favoritos:", err));
   };
 
+  const trackProfessionalEvent = (
+    professionalId: string,
+    eventType: "whatsapp_click" | "contact_click" | "location_click" | "favorite_add" | "routine_import",
+    metadata: Record<string, any> = {}
+  ) => {
+    if (!professionalId) return;
+    const fieldMap: Record<string, string> = {
+      whatsapp_click: "whatsappClicks",
+      contact_click: "contactClicks",
+      location_click: "locationClicks",
+      favorite_add: "favoriteAdds",
+      routine_import: "routineImportClicks",
+    };
+    const statField = fieldMap[eventType];
+
+    setDoc(
+      doc(db, "supportNetworkStats", professionalId),
+      {
+        professionalId,
+        [statField]: increment(1),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    ).catch((err) => console.error("Falha ao incrementar métrica profissional:", err));
+
+    const user = auth.currentUser;
+    addDoc(collection(db, "supportNetworkEvents"), {
+      professionalId,
+      eventType,
+      userId: user?.uid ?? null,
+      userEmail: user?.email ?? null,
+      createdAt: serverTimestamp(),
+      metadata,
+    }).catch((err) => console.error("Falha ao registrar evento profissional:", err));
+  };
+
   const activeSupportNetworkProfessionals = useMemo(() => {
     const todayStr = getTodayDateString();
     return supportNetworkProfessionals.filter((p) => isProfessionalActiveNow(p, todayStr));
@@ -1328,6 +1371,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
 
     favoriteProfessionalIds,
     toggleFavoriteProfessional,
+    trackProfessionalEvent,
 
     supportNetworkProfessionals,
     activeSupportNetworkProfessionals,

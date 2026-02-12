@@ -59,7 +59,7 @@ const resolveUfSigla = (value: string, states: UF[]) => {
 };
 
 const ProfessionalCard: React.FC<{ professional: Professional, isFeatured?: boolean }> = ({ professional, isFeatured }) => {
-    const { favoriteProfessionalIds, toggleFavoriteProfessional } = useAppContext();
+    const { favoriteProfessionalIds, toggleFavoriteProfessional, trackProfessionalEvent } = useAppContext();
     const isFavorite = favoriteProfessionalIds.includes(professional.id);
     const { contacts } = professional;
 
@@ -97,7 +97,12 @@ const ProfessionalCard: React.FC<{ professional: Professional, isFeatured?: bool
                                 <h3 className="font-bold text-lg text-gray-800 leading-tight">{professional.name}</h3>
                                 {canFavorite && (
                                     <button
-                                        onClick={() => toggleFavoriteProfessional(professional.id)}
+                                        onClick={() => {
+                                            if (!isFavorite) {
+                                                trackProfessionalEvent(professional.id, "favorite_add", { source: "support_network_page" });
+                                            }
+                                            toggleFavoriteProfessional(professional.id);
+                                        }}
                                         className={`flex-shrink-0 p-1.5 rounded-full transition-colors ${
                                             isFavorite ? "bg-red-50 text-red-600" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                                         }`}
@@ -140,14 +145,31 @@ const ProfessionalCard: React.FC<{ professional: Professional, isFeatured?: bool
                             href={contacts.bookingUrl || buildWhatsAppLink(contacts.whatsapp || "", buildBookingMessage(professional))}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={() => {
+                                trackProfessionalEvent(professional.id, "contact_click", { source: "support_network_page" });
+                                if (!contacts.bookingUrl && contacts.whatsapp) {
+                                    trackProfessionalEvent(professional.id, "whatsapp_click", { source: "support_network_page" });
+                                }
+                            }}
                             className="flex-1 text-center bg-cyan-500 text-white font-bold text-xs py-2 px-3 rounded-lg hover:bg-cyan-600 transition-colors whitespace-nowrap"
                         >
                             Entrar em contato
                         </a>
                     )}
                     {contacts.phone && <a href={`tel:+55${contacts.phone.replace(/\D/g, '')}`} className="flex-1 text-center bg-purple-100 text-purple-700 font-bold text-xs py-2 px-3 rounded-lg hover:bg-purple-200 transition-colors whitespace-nowrap">Ligar</a>}
-                    {contacts.maps && <a href={contacts.maps} target="_blank" rel="noopener noreferrer" className="flex-1 text-center bg-blue-100 text-blue-700 font-bold text-xs py-2 px-3 rounded-lg hover:bg-blue-200 transition-colors whitespace-nowrap">Localização</a>}
-                    {professional.tier === "exclusive" && <button type="button" className="flex-1 text-center bg-purple-600 text-white font-bold text-xs py-2 px-3 rounded-lg hover:bg-purple-700 transition-colors whitespace-nowrap">Rotinas personalizadas</button>}
+                    {contacts.maps && <a href={contacts.maps} target="_blank" rel="noopener noreferrer" onClick={() => trackProfessionalEvent(professional.id, "location_click", { source: "support_network_page" })} className="flex-1 text-center bg-blue-100 text-blue-700 font-bold text-xs py-2 px-3 rounded-lg hover:bg-blue-200 transition-colors whitespace-nowrap">Localização</a>}
+                    {professional.tier === "exclusive" && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                trackProfessionalEvent(professional.id, "routine_import", { source: "support_network_page" });
+                                alert("Importação de rotinas personalizadas será liberada em breve.");
+                            }}
+                            className="flex-1 text-center bg-purple-600 text-white font-bold text-xs py-2 px-3 rounded-lg hover:bg-purple-700 transition-colors whitespace-nowrap"
+                        >
+                            Rotinas personalizadas
+                        </button>
+                    )}
                  </div>
             </div>
         </div>
