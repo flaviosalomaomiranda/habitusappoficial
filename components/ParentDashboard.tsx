@@ -1045,7 +1045,7 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
                                             {habitsForDate.map((habit, index) => {
                                                 const Icon = HABIT_ICONS[habit.icon];
                                                 const status = habit.completions[viewedDate];
@@ -1096,24 +1096,24 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                                 </div>
                                                             )}
                                                             <div
-                                                                className={`flex items-center justify-between p-3 sm:p-2.5 rounded-xl border transition-transform ${canSwipeToComplete ? "" : "transition-all"} ${bgColor}`}
+                                                                className={`flex items-center justify-between p-2.5 sm:p-2 rounded-xl border transition-transform ${canSwipeToComplete ? "" : "transition-all"} ${bgColor}`}
                                                                 style={canSwipeToComplete ? { transform: `translateX(${swipeOffset}px)` } : undefined}
                                                                 onTouchStart={canSwipeToComplete ? (event) => beginHabitSwipe(habit.id, event) : undefined}
                                                                 onTouchMove={canSwipeToComplete ? moveHabitSwipe : undefined}
                                                                 onTouchEnd={canSwipeToComplete ? () => endHabitSwipe(habit.id) : undefined}
                                                                 onTouchCancel={canSwipeToComplete ? () => endHabitSwipe(habit.id) : undefined}
                                                             >
-                                                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                                    <div className={`h-14 w-14 sm:h-16 sm:w-16 rounded-xl overflow-hidden flex items-center justify-center ${iconClasses}`}>
+                                                                <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                                                                    <div className={`h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex items-center justify-center ${iconClasses}`}>
                                                                         {habit.imageUrl ? (
                                                                             <img src={habit.imageUrl} alt={habit.name} className="w-full h-full object-cover" />
                                                                         ) : (
-                                                                            <Icon className="w-7 h-7 sm:w-8 sm:h-8" />
+                                                                            <Icon className="w-6 h-6 sm:w-7 sm:h-7" />
                                                                         )}
                                                                     </div>
                                                                     <div className="flex-1">
-                                                                        <span className={`text-sm sm:text-[13px] font-bold block leading-snug ${isCompleted ? 'text-green-800' : 'text-gray-800'}`}>{habit.name}</span>
-                                                                        <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-500">
+                                                                        <span className={`text-[13px] sm:text-sm font-bold block leading-tight ${isCompleted ? 'text-green-800' : 'text-gray-800'}`}>{habit.name}</span>
+                                                                        <div className="mt-0.5 flex items-center gap-1 text-[10px] sm:text-[11px] text-gray-500">
                                                                             <span className={`${rewardClass} font-bold flex items-center gap-0.5`}>
                                                                                 {habit.reward.type === 'STARS' ? `+${habit.reward.value}` : habit.reward.activityName}
                                                                                 {habit.reward.type === 'STARS' && <StarIcon className="w-3.5 h-3.5" />}
