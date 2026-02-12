@@ -34,7 +34,6 @@ import {
   getFirstDayOfCurrentMonth,
 } from "../utils/dateUtils";
 
-import { SUPPORT_NETWORK_SEED } from "../data/supportNetworkData";
 import { PRODUCTS_SEED } from "../data/products";
 
 // ✅ Firestore
@@ -350,7 +349,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
 
   const [supportNetworkProfessionals, setSupportNetworkProfessionals] = useLocalStorage<Professional[]>(
     storageKey("support-network-professionals"),
-    SUPPORT_NETWORK_SEED,
+    [],
     ["support-network-professionals"]
   );
   const [supportNetworkPricing, setSupportNetworkPricing] = useState<SupportNetworkPricing>({
@@ -404,6 +403,29 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     return raw
       .map(parseFirestoreDocumentToProfessional)
       .filter((item): item is Professional => Boolean(item));
+  };
+
+  const fetchSupportNetworkPricingViaRest = async (): Promise<SupportNetworkPricing | null> => {
+    const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined;
+    const apiKey = import.meta.env.VITE_FIREBASE_API_KEY as string | undefined;
+    if (!projectId || !apiKey) return null;
+    const endpoint = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/supportNetworkSettings/pricing?key=${apiKey}`;
+    const response = await fetch(endpoint, { method: "GET" });
+    if (!response.ok) return null;
+    const raw = await response.json();
+    const fields = raw?.fields;
+    if (!fields || typeof fields !== "object") return null;
+    const plans = readFirestorePrimitive(fields.plans) || {};
+    return {
+      plans: {
+        verified: { monthly: Number(plans?.verified?.monthly ?? 0), annual: Number(plans?.verified?.annual ?? 0) },
+        top: { monthly: Number(plans?.top?.monthly ?? 0), annual: Number(plans?.top?.annual ?? 0) },
+        exclusive: { monthly: Number(plans?.exclusive?.monthly ?? 0), annual: Number(plans?.exclusive?.annual ?? 0) },
+        master: { monthly: Number(plans?.master?.monthly ?? 0), annual: Number(plans?.master?.annual ?? 0) },
+      },
+      updatedAt: readFirestorePrimitive(fields.updatedAt),
+      updatedByEmail: readFirestorePrimitive(fields.updatedByEmail) ?? null,
+    };
   };
 
   const fetchRoutineTemplatesViaRest = async () => {
@@ -713,6 +735,33 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
 
   useEffect(() => {
     const pricingRef = doc(db, "supportNetworkSettings", "pricing");
+    let cancelled = false;
+
+    const applyPricing = (data: any) => {
+      setSupportNetworkPricing({
+        plans: {
+          verified: { monthly: Number(data.plans?.verified?.monthly ?? 0), annual: Number(data.plans?.verified?.annual ?? 0) },
+          top: { monthly: Number(data.plans?.top?.monthly ?? 0), annual: Number(data.plans?.top?.annual ?? 0) },
+          exclusive: { monthly: Number(data.plans?.exclusive?.monthly ?? 0), annual: Number(data.plans?.exclusive?.annual ?? 0) },
+          master: { monthly: Number(data.plans?.master?.monthly ?? 0), annual: Number(data.plans?.master?.annual ?? 0) },
+        },
+        updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt,
+        updatedByEmail: data.updatedByEmail ?? null,
+      });
+    };
+
+    const applyRestFallback = async () => {
+      try {
+        const pricing = await fetchSupportNetworkPricingViaRest();
+        if (cancelled || !pricing) return;
+        setSupportNetworkPricing(pricing);
+      } catch (err) {
+        console.error("Falha no fallback REST supportNetworkPricing:", err);
+      }
+    };
+
+    applyRestFallback().catch(() => null);
+
     const unsub = onSnapshot(pricingRef, (snap) => {
       if (!snap.exists()) {
         setSupportNetworkPricing((prev) => ({
@@ -728,19 +777,16 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       }
       const data = snap.data() as any;
       if (data?.plans) {
-        setSupportNetworkPricing({
-          plans: {
-            verified: { monthly: Number(data.plans?.verified?.monthly ?? 0), annual: Number(data.plans?.verified?.annual ?? 0) },
-            top: { monthly: Number(data.plans?.top?.monthly ?? 0), annual: Number(data.plans?.top?.annual ?? 0) },
-            exclusive: { monthly: Number(data.plans?.exclusive?.monthly ?? 0), annual: Number(data.plans?.exclusive?.annual ?? 0) },
-            master: { monthly: Number(data.plans?.master?.monthly ?? 0), annual: Number(data.plans?.master?.annual ?? 0) },
-          },
-          updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt,
-          updatedByEmail: data.updatedByEmail ?? null,
-        });
+        applyPricing(data);
       }
+    }, (err) => {
+      console.error("Falha ao ler supportNetworkPricing:", err);
+      applyRestFallback().catch(() => null);
     });
-    return () => unsub();
+    return () => {
+      cancelled = true;
+      unsub();
+    };
   }, []);
 
   useEffect(() => {
@@ -748,16 +794,15 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     const applyRestFallback = async () => {
       try {
         const docs = await fetchSupportNetworkViaRest();
-        if (cancelled || docs.length === 0) return;
+        if (cancelled) return;
         setSupportNetworkProfessionals(docs);
       } catch (err) {
         console.error("Falha no fallback REST supportNetwork:", err);
       }
     };
 
-    if ((latestSupportNetworkRef.current || []).length === 0) {
-      applyRestFallback().catch(() => null);
-    }
+    // Força reconciliação com a nuvem ao iniciar (evita "fantasma" de cache local).
+    applyRestFallback().catch(() => null);
 
     const unsub = onSnapshot(
       collection(db, "supportNetwork"),
