@@ -13,14 +13,13 @@ const TEMPLATE_IMAGE_MAX_BYTES = 1_500_000;
 const TEMPLATE_IMAGE_WIDTH = 400;
 const TEMPLATE_IMAGE_HEIGHT = 400;
 
-const getImageDimensions = (file: File): Promise<{ width: number; height: number }> =>
+const loadImage = (file: File): Promise<HTMLImageElement> =>
   new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      const { width, height } = img;
       URL.revokeObjectURL(url);
-      resolve({ width, height });
+      resolve(img);
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
@@ -28,6 +27,37 @@ const getImageDimensions = (file: File): Promise<{ width: number; height: number
     };
     img.src = url;
   });
+
+const cropToSquareBlob = async (file: File): Promise<Blob> => {
+  const source = await loadImage(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = TEMPLATE_IMAGE_WIDTH;
+  canvas.height = TEMPLATE_IMAGE_HEIGHT;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Falha ao preparar imagem.');
+
+  const sourceSize = Math.min(source.width, source.height);
+  const sx = Math.max(0, Math.floor((source.width - sourceSize) / 2));
+  const sy = Math.max(0, Math.floor((source.height - sourceSize) / 2));
+
+  ctx.drawImage(
+    source,
+    sx,
+    sy,
+    sourceSize,
+    sourceSize,
+    0,
+    0,
+    TEMPLATE_IMAGE_WIDTH,
+    TEMPLATE_IMAGE_HEIGHT
+  );
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, 'image/webp', 0.9)
+  );
+  if (!blob) throw new Error('Falha ao gerar imagem final.');
+  return blob;
+};
 
 const AddOrEditTemplateModal: React.FC<AddOrEditTemplateModalProps> = ({ template, onClose }) => {
   const { addRoutineTemplate, updateRoutineTemplate, deleteRoutineTemplate } = useAppContext();
@@ -52,14 +82,10 @@ const AddOrEditTemplateModal: React.FC<AddOrEditTemplateModalProps> = ({ templat
     }
     try {
       setIsUploading(true);
-      const { width, height } = await getImageDimensions(file);
-      if (width !== TEMPLATE_IMAGE_WIDTH || height !== TEMPLATE_IMAGE_HEIGHT) {
-        setFormError(`A imagem do modelo precisa ter ${TEMPLATE_IMAGE_WIDTH}x${TEMPLATE_IMAGE_HEIGHT}px.`);
-        return;
-      }
+      const processedImage = await cropToSquareBlob(file);
       const id = template?.id || crypto.randomUUID();
-      const fileRef = ref(storage, `routine-templates/${id}-${Date.now()}`);
-      await uploadBytes(fileRef, file, { contentType: file.type });
+      const fileRef = ref(storage, `routine-templates/${id}-${Date.now()}.webp`);
+      await uploadBytes(fileRef, processedImage, { contentType: 'image/webp' });
       const url = await getDownloadURL(fileRef);
       setImageUrl(url);
     } catch {
@@ -118,7 +144,7 @@ const AddOrEditTemplateModal: React.FC<AddOrEditTemplateModalProps> = ({ templat
           </div>
 
           <div>
-            <label className="block text-gray-700 font-semibold mb-2">Imagem (400x400)</label>
+            <label className="block text-gray-700 font-semibold mb-2">Imagem (corte automatico para 400x400)</label>
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
