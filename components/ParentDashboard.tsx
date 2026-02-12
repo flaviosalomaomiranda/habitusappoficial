@@ -1104,11 +1104,11 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                                 onTouchCancel={canSwipeToComplete ? () => endHabitSwipe(habit.id) : undefined}
                                                             >
                                                                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                                    <div className={`h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex items-center justify-center ${iconClasses}`}>
+                                                                    <div className={`h-14 w-14 sm:h-16 sm:w-16 rounded-xl overflow-hidden flex items-center justify-center ${iconClasses}`}>
                                                                         {habit.imageUrl ? (
                                                                             <img src={habit.imageUrl} alt={habit.name} className="w-full h-full object-cover" />
                                                                         ) : (
-                                                                            <Icon className="w-6 h-6 sm:w-7 sm:h-7" />
+                                                                            <Icon className="w-7 h-7 sm:w-8 sm:h-8" />
                                                                         )}
                                                                     </div>
                                                                     <div className="flex-1">
