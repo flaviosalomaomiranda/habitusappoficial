@@ -585,6 +585,10 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
             .sort((a, b) => (a.tierJoinedAt || "").localeCompare(b.tierJoinedAt || "") || a.name.localeCompare(b.name));
     }, [activeSupportNetworkProfessionals, familyLocation]);
 
+    const heroExclusiveProfessional = useMemo(() => {
+        return pickRoundRobinExclusive(cityExclusiveProfessionals, familyLocation);
+    }, [cityExclusiveProfessionals, familyLocation?.cityId, familyLocation?.uf]);
+
     const favoriteProfessionals = getFavoriteProfessionals();
     
     const [currentView, setCurrentView] = useState<ParentView>('dashboard');
@@ -789,10 +793,6 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
             </div>
         );
     };
-
-    const heroExclusiveProfessional = useMemo(() => {
-        return pickRoundRobinExclusive(cityExclusiveProfessionals, familyLocation);
-    }, [cityExclusiveProfessionals, familyLocation?.cityId, familyLocation?.uf]);
 
     const renderServiceSpotlight = (professional: Professional | null, { inline = false }: { inline?: boolean } = {}) => {
         if (!professional) return null;
