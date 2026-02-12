@@ -276,6 +276,29 @@ function parseFirestoreDocumentToProfessional(doc: any): Professional | null {
   return mapped as Professional;
 }
 
+function parseFirestoreDocumentToRoutineTemplate(doc: any): RoutineTemplate | null {
+  const fields = doc?.document?.fields;
+  if (!fields || typeof fields !== "object") return null;
+  const mapped: Record<string, any> = {};
+  Object.entries(fields).forEach(([key, value]) => {
+    mapped[key] = readFirestorePrimitive(value);
+  });
+  if (!mapped.id && typeof doc?.document?.name === "string") {
+    const parts = doc.document.name.split("/");
+    mapped.id = parts[parts.length - 1];
+  }
+  if (!mapped.id || !mapped.name) return null;
+  return {
+    id: mapped.id,
+    name: String(mapped.name),
+    imageUrl: typeof mapped.imageUrl === "string" ? mapped.imageUrl : undefined,
+    isActive: mapped.isActive !== false,
+    icon: mapped.icon,
+    reward: mapped.reward,
+    schedule: mapped.schedule,
+  } as RoutineTemplate;
+}
+
 export const AppProvider = ({ children }: PropsWithChildren) => {
   const { confirm, showToast } = useFeedback();
   // ✅ Agora as crianças vêm do Firestore
@@ -371,6 +394,34 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     return raw
       .map(parseFirestoreDocumentToProfessional)
       .filter((item): item is Professional => Boolean(item));
+  };
+
+  const fetchRoutineTemplatesViaRest = async () => {
+    const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined;
+    const apiKey = import.meta.env.VITE_FIREBASE_API_KEY as string | undefined;
+    if (!projectId || !apiKey) return [] as RoutineTemplate[];
+
+    const endpoint = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
+    const body = {
+      structuredQuery: {
+        from: [{ collectionId: "routineTemplatesGlobal" }],
+        limit: 250,
+      },
+    };
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new Error(`REST routineTemplatesGlobal status ${response.status}`);
+    }
+    const raw = await response.json();
+    if (!Array.isArray(raw)) return [] as RoutineTemplate[];
+    return raw
+      .map(parseFirestoreDocumentToRoutineTemplate)
+      .filter((item): item is RoutineTemplate => Boolean(item));
   };
 
   // ? NOVO: pega uid do usuario logado
@@ -533,6 +584,18 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
 
   useEffect(() => {
     const templatesRef = collection(db, "routineTemplatesGlobal");
+    let cancelled = false;
+
+    const applyRestFallback = async () => {
+      try {
+        const docs = await fetchRoutineTemplatesViaRest();
+        if (cancelled || docs.length === 0) return;
+        setTemplatesData(docs);
+      } catch (err) {
+        console.error("Falha no fallback REST routineTemplatesGlobal:", err);
+      }
+    };
+
     const unsubTemplates = onSnapshot(
       templatesRef,
       (snap) => {
@@ -548,14 +611,21 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
             schedule: data.schedule,
           } as RoutineTemplate;
         });
+        if (templates.length === 0) {
+          applyRestFallback().catch(() => null);
+        }
         setTemplatesData(templates);
       },
       (err) => {
         console.error("Falha ao carregar modelos globais:", err);
+        applyRestFallback().catch(() => null);
       }
     );
 
-    return () => unsubTemplates();
+    return () => {
+      cancelled = true;
+      unsubTemplates();
+    };
   }, []);
 
   /** ? Helper pra salvar child (merge) */
