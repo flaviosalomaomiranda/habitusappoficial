@@ -20,6 +20,7 @@ const ManageTagCatalogModal: React.FC<ManageTagCatalogModalProps> = ({ onClose, 
   const { tagTaxonomy, suggestedTagCandidates, tagSuggestionThreshold, updateTagTaxonomy } = useAppContext();
   const [isSaving, setIsSaving] = useState(false);
   const [newTag, setNewTag] = useState("");
+  const [selectedSuggestedTags, setSelectedSuggestedTags] = useState<string[]>([]);
   const [states, setStates] = useState<UF[]>([]);
   const [cities, setCities] = useState<Municipio[]>([]);
   const [selectedUf, setSelectedUf] = useState("");
@@ -89,6 +90,26 @@ const ManageTagCatalogModal: React.FC<ManageTagCatalogModalProps> = ({ onClose, 
       await updateTagTaxonomy({
         officialTags: Array.from(new Set([...tagTaxonomy.officialTags, normalized])),
       });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const toggleSuggestedSelection = (tag: string) => {
+    setSelectedSuggestedTags((prev) =>
+      prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]
+    );
+  };
+
+  const promoteSelectedTags = async () => {
+    if (selectedSuggestedTags.length === 0) return;
+    setIsSaving(true);
+    try {
+      const merged = Array.from(
+        new Set([...tagTaxonomy.officialTags, ...selectedSuggestedTags.map((t) => normalizeTag(t)).filter(Boolean)])
+      );
+      await updateTagTaxonomy({ officialTags: merged });
+      setSelectedSuggestedTags([]);
     } finally {
       setIsSaving(false);
     }
@@ -166,10 +187,29 @@ const ManageTagCatalogModal: React.FC<ManageTagCatalogModalProps> = ({ onClose, 
               <strong>{tagSuggestionThreshold.minOccurrences}</strong> ocorrências.
             </p>
             <p className="text-[11px] text-amber-700 mb-3">Base atual: {tagSuggestionThreshold.totalUsers} usuários.</p>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-xs text-amber-800 font-semibold">
+                Selecionadas: {selectedSuggestedTags.length}
+              </span>
+              <button
+                type="button"
+                onClick={promoteSelectedTags}
+                disabled={isSaving || selectedSuggestedTags.length === 0}
+                className="px-2 py-1 rounded-md text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+              >
+                Tornar oficiais (lote)
+              </button>
+            </div>
             <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
               {suggestedTagCandidates.map((item) => (
                 <div key={`suggested-${item.tag}`} className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white p-2">
-                  <div>
+                  <button
+                    type="button"
+                    onClick={() => toggleSuggestedSelection(item.tag)}
+                    className={`h-4 w-4 rounded border flex-shrink-0 ${selectedSuggestedTags.includes(item.tag) ? "bg-purple-600 border-purple-600" : "bg-white border-gray-300"}`}
+                    aria-label={`Selecionar ${item.tag}`}
+                  />
+                  <div className="flex-1">
                     <span className="text-sm font-semibold text-gray-800">{item.tag}</span>
                     <span className="ml-2 text-xs text-gray-500">freq: {item.count}</span>
                     <span className="ml-2 text-xs text-gray-500">usuários: {item.distinctUsers || 0}</span>
