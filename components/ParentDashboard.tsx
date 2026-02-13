@@ -24,6 +24,7 @@ import ManageSupportNetworkModal from './ManageSupportNetworkModal';
 import ManageSupportNetworkPricingModal from './ManageSupportNetworkPricingModal';
 import ManageMasterDefaultsModal from './ManageMasterDefaultsModal';
 import ManageRecommendationsModal from './ManageRecommendationsModal';
+import ManageTagCatalogModal from './ManageTagCatalogModal';
 import UserProfileModal from './UserProfileModal';
 import ManageFamilyMembersModal from './ManageFamilyMembersModal';
 import ManageManagersModal from './ManageManagersModal';
@@ -40,7 +41,7 @@ type DeletionInfo = {
     date: string;
 }
 
-type ParentView = 'dashboard' | 'recommendations' | 'supportNetwork' | 'favorites' | 'adminTemplates' | 'adminSupportNetwork' | 'adminRecommendations' | 'adminSupportNetworkPricing' | 'adminMasterDefaults';
+type ParentView = 'dashboard' | 'recommendations' | 'supportNetwork' | 'favorites' | 'adminTemplates' | 'adminSupportNetwork' | 'adminRecommendations' | 'adminSupportNetworkPricing' | 'adminMasterDefaults' | 'adminTagCatalog';
 
 interface ParentDashboardProps {
     onEnterTvMode: () => void;
@@ -592,7 +593,7 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
     const favoriteProfessionals = getFavoriteProfessionals();
     
     const [currentView, setCurrentView] = useState<ParentView>('dashboard');
-    const isAdminPanelView = currentView === 'adminTemplates' || currentView === 'adminSupportNetwork' || currentView === 'adminRecommendations' || currentView === 'adminSupportNetworkPricing' || currentView === 'adminMasterDefaults';
+    const isAdminPanelView = currentView === 'adminTemplates' || currentView === 'adminSupportNetwork' || currentView === 'adminRecommendations' || currentView === 'adminSupportNetworkPricing' || currentView === 'adminMasterDefaults' || currentView === 'adminTagCatalog';
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isAddChildModalOpen, setAddChildModalOpen] = useState(false);
     const [editingChild, setEditingChild] = useState<Child | null>(null);
@@ -887,6 +888,10 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                 <GiftIcon className="w-5 h-5 text-cyan-500" />
                                 <span>Gerenciar Shopping</span>
                             </button>
+                            <button onClick={() => { setCurrentView('adminTagCatalog'); setIsMenuOpen(false); }} className={adminNavButtonClass('adminTagCatalog')}>
+                                <ClipboardListIcon className="w-5 h-5 text-fuchsia-500" />
+                                <span>Catálogo de Tags</span>
+                            </button>
                         </div>
                     </div>
                 )}
@@ -992,6 +997,9 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
             case "adminMasterDefaults":
                 if (!isAdmin) return <div className="p-6 text-sm text-gray-500">Sem permissão.</div>;
                 return <ManageMasterDefaultsModal embedded onClose={() => setCurrentView("dashboard")} />;
+            case "adminTagCatalog":
+                if (!isAdmin) return <div className="p-6 text-sm text-gray-500">Sem permissão.</div>;
+                return <ManageTagCatalogModal embedded onClose={() => setCurrentView("dashboard")} />;
             case 'dashboard':
             default:
                 return (

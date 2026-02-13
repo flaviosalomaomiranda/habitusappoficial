@@ -297,6 +297,18 @@ export interface AdMatchInput {
   userLocation?: FamilyLocation;
 }
 
+export interface TagTaxonomy {
+  officialTags: string[];
+  synonyms: Record<string, string>;
+  updatedAt?: string;
+  updatedByEmail?: string | null;
+}
+
+export interface SuggestedTag {
+  tag: string;
+  count: number;
+}
+
 
 
 

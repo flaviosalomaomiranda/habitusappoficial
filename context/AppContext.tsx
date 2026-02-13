@@ -26,6 +26,8 @@ import {
   UserProfile,
   Manager,
   SupportNetworkPricing,
+  TagTaxonomy,
+  SuggestedTag,
 } from "../types";
 
 import {
@@ -64,6 +66,12 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../src/lib/firebase";
 import { useFeedback } from "./FeedbackContext";
 import { bumpTagScores, inferSemanticTags } from "../utils/semanticTags";
+import {
+  canonicalizeTags,
+  DEFAULT_OFFICIAL_TAGS,
+  normalizeTag,
+  normalizeTags,
+} from "../utils/tagTaxonomy";
 
 export interface RewardAvailability {
   isAvailable: boolean;
@@ -180,6 +188,9 @@ interface AppContextType {
   addRecommendation: (recommendation: Omit<Recommendation, "id" | "createdAt" | "updatedAt">) => void;
   updateRecommendation: (recommendation: Recommendation) => void;
   deleteRecommendation: (recommendationId: string) => void;
+  tagTaxonomy: TagTaxonomy;
+  suggestedTagCandidates: SuggestedTag[];
+  updateTagTaxonomy: (taxonomy: Partial<TagTaxonomy>) => Promise<void>;
 
   managerProfile: Manager | null;
   isManager: boolean;
@@ -326,25 +337,6 @@ function parseFirestoreDocumentToRoutineTemplate(doc: any): RoutineTemplate | nu
   } as RoutineTemplate;
 }
 
-function normalizeRecommendationTag(tag: string): string {
-  const clean = tag.trim().toLowerCase().replace(/\s+/g, "_");
-  if (!clean) return "";
-  return clean.startsWith("#") ? clean : `#${clean}`;
-}
-
-function buildRecommendationTags(input: {
-  title?: string;
-  description?: string;
-  category?: string;
-  tags?: string[];
-}): string[] {
-  const inferred = inferSemanticTags(input.title, input.description, input.category);
-  const combined = [...(input.tags || []), ...inferred]
-    .map((t) => normalizeRecommendationTag(t))
-    .filter(Boolean);
-  return Array.from(new Set(combined));
-}
-
 export const AppProvider = ({ children }: PropsWithChildren) => {
   const { confirm, showToast } = useFeedback();
   // ✅ Agora as crianças vêm do Firestore
@@ -410,6 +402,10 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   const latestSupportNetworkRef = useRef<Professional[]>(supportNetworkProfessionals);
 
   const [productRecommendations, setProductRecommendations] = useState<Recommendation[]>(PRODUCTS_SEED);
+  const [tagTaxonomy, setTagTaxonomy] = useState<TagTaxonomy>({
+    officialTags: DEFAULT_OFFICIAL_TAGS,
+    synonyms: {},
+  });
 
   const [isFamilyOwner, setIsFamilyOwner] = useState(false);
   const [canManageMembers, setCanManageMembers] = useState(false);
@@ -727,12 +723,13 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
         const docs = snap.docs
           .map((d) => {
             const data = d.data() as any;
-            const normalizedTags = buildRecommendationTags({
-              title: data.title,
-              description: data.description,
-              category: data.category,
-              tags: Array.isArray(data.tags) ? data.tags : [],
-            });
+            const normalizedTags = canonicalizeTags(
+              normalizeTags([
+                ...(Array.isArray(data.tags) ? data.tags : []),
+                ...inferSemanticTags(data.title, data.description, data.category),
+              ]),
+              tagTaxonomy.synonyms
+            );
             return {
               id: d.id,
               title: data.title || "",
@@ -760,7 +757,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       }
     );
     return () => unsub();
-  }, []);
+  }, [tagTaxonomy.synonyms]);
 
   useEffect(() => {
     const defaultsRef = doc(db, "supportNetworkSettings", "defaultMasters");
@@ -778,6 +775,24 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
         globalProfessionalId: data?.globalProfessionalId ?? null,
         byCityId: (data?.byCityId && typeof data.byCityId === "object") ? data.byCityId : {},
         byUfLegacy: (data?.byUf && typeof data.byUf === "object") ? data.byUf : {},
+      });
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const taxonomyRef = doc(db, "supportNetworkSettings", "tagTaxonomy");
+    const unsub = onSnapshot(taxonomyRef, (snap) => {
+      if (!snap.exists()) {
+        setTagTaxonomy({ officialTags: DEFAULT_OFFICIAL_TAGS, synonyms: {} });
+        return;
+      }
+      const data = snap.data() as any;
+      setTagTaxonomy({
+        officialTags: normalizeTags(Array.isArray(data?.officialTags) ? data.officialTags : DEFAULT_OFFICIAL_TAGS),
+        synonyms: (data?.synonyms && typeof data.synonyms === "object") ? data.synonyms : {},
+        updatedAt: data?.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data?.updatedAt,
+        updatedByEmail: data?.updatedByEmail ?? null,
       });
     });
     return () => unsub();
@@ -987,9 +1002,13 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
 
   const addRecommendation = (data: Omit<Recommendation, "id" | "createdAt" | "updatedAt">) => {
     const now = new Date().toISOString();
+    const canonicalTags = canonicalizeTags(
+      normalizeTags([...(data.tags || []), ...inferSemanticTags(data.title, data.description, data.category)]),
+      tagTaxonomy.synonyms
+    );
     const newRec: Recommendation = {
       ...data,
-      tags: buildRecommendationTags(data),
+      tags: canonicalTags,
       id: `prod-${crypto.randomUUID()}`,
       createdAt: now,
       updatedAt: now,
@@ -1008,9 +1027,13 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   };
 
   const updateRecommendation = (updatedRec: Recommendation) => {
+    const canonicalTags = canonicalizeTags(
+      normalizeTags([...(updatedRec.tags || []), ...inferSemanticTags(updatedRec.title, updatedRec.description, updatedRec.category)]),
+      tagTaxonomy.synonyms
+    );
     const nextRec = {
       ...updatedRec,
-      tags: buildRecommendationTags(updatedRec),
+      tags: canonicalTags,
       updatedAt: new Date().toISOString(),
     };
     setProductRecommendations((prev) =>
@@ -1043,9 +1066,13 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     const now = new Date().toISOString();
     const normalized = recommendations.map((rec) => {
       const id = rec.id || `prod-${crypto.randomUUID()}`;
+      const canonicalTags = canonicalizeTags(
+        normalizeTags([...(rec.tags || []), ...inferSemanticTags(rec.title, rec.description, rec.category)]),
+        tagTaxonomy.synonyms
+      );
       const next: Recommendation = {
         ...rec,
-        tags: buildRecommendationTags(rec),
+        tags: canonicalTags,
         id,
         createdAt: rec.createdAt || now,
         updatedAt: now,
@@ -1060,6 +1087,61 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     });
     await batch.commit();
     setProductRecommendations(normalized);
+  };
+
+  const suggestedTagCandidates = useMemo<SuggestedTag[]>(() => {
+    const official = new Set(tagTaxonomy.officialTags.map(normalizeTag));
+    const counters = new Map<string, number>();
+
+    const addTagList = (tags?: string[], weight = 1) => {
+      (tags || []).forEach((raw) => {
+        const tag = normalizeTag(raw);
+        if (!tag) return;
+        if (official.has(tag)) return;
+        counters.set(tag, (counters.get(tag) || 0) + weight);
+      });
+    };
+
+    productRecommendations.forEach((rec) => addTagList(rec.tags, 3));
+    supportNetworkProfessionals.forEach((prof) => {
+      addTagList(prof.semanticTags, 2);
+      addTagList(prof.spotlightKeywords, 1);
+      addTagList(prof.specialties.map((s) => normalizeTag(s)), 1);
+    });
+    templatesData.forEach((tpl) => addTagList(tpl.semanticTags && tpl.semanticTags.length > 0 ? tpl.semanticTags : inferSemanticTags(tpl.name), 2));
+    shopRewardsData.forEach((reward) => addTagList(reward.semanticTags && reward.semanticTags.length > 0 ? reward.semanticTags : inferSemanticTags(reward.name), 1));
+
+    Object.keys(settings.semanticTagScores || {}).forEach((tag) => {
+      addTagList([tag], Math.max(1, Number(settings.semanticTagScores?.[tag] || 0)));
+    });
+
+    return Array.from(counters.entries())
+      .map(([tag, count]) => ({ tag, count }))
+      .filter((item) => item.count >= 3)
+      .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+      .slice(0, 30);
+  }, [
+    productRecommendations,
+    settings.semanticTagScores,
+    shopRewardsData,
+    supportNetworkProfessionals,
+    tagTaxonomy.officialTags,
+    templatesData,
+  ]);
+
+  const updateTagTaxonomy = async (taxonomy: Partial<TagTaxonomy>) => {
+    const nextOfficial = normalizeTags(taxonomy.officialTags ?? tagTaxonomy.officialTags);
+    const nextSynonyms = taxonomy.synonyms ?? tagTaxonomy.synonyms ?? {};
+    await setDoc(
+      doc(db, "supportNetworkSettings", "tagTaxonomy"),
+      {
+        officialTags: nextOfficial,
+        synonyms: nextSynonyms,
+        updatedAt: serverTimestamp(),
+        updatedByEmail: auth.currentUser?.email ?? null,
+      },
+      { merge: true }
+    );
   };
 
   const toggleFavoriteProfessional = (professionalId: string) => {
@@ -1736,6 +1818,9 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     addRecommendation,
     updateRecommendation,
     deleteRecommendation,
+    tagTaxonomy,
+    suggestedTagCandidates,
+    updateTagTaxonomy,
 
     managerProfile,
     isManager,
