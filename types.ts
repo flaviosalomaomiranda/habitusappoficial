@@ -311,6 +311,7 @@ export interface TagTaxonomy {
 export interface SuggestedTag {
   tag: string;
   count: number;
+  distinctUsers?: number;
 }
 
 
