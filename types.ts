@@ -144,6 +144,10 @@ export interface UserProfile {
   interests?: string[];
   shoppingPreferences?: string[];
   timeGoals?: string[];
+  healthComplaints?: string[];
+  neuroConditions?: string[];
+  semanticTags?: string[];
+  recommendedProfessionalSpecialties?: string[];
   updatedAt?: string;
 }
 

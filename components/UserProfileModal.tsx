@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { getStates, getCitiesByState, type UF, type Municipio } from '../services/ibgeService';
 import { AgeGroup, FamilyLocation, ProfileRole, UserProfile } from '../types';
+import {
+  HEALTH_COMPLAINT_OPTIONS,
+  NEURO_CONDITION_OPTIONS,
+  deriveSemanticTagsFromProfile,
+} from '../utils/profileSemantic';
 
 interface UserProfileModalProps {
   onClose: () => void;
@@ -136,6 +141,8 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ onClose }) => {
     userProfile?.shoppingPreferences || []
   );
   const [timeGoals, setTimeGoals] = useState<string[]>(userProfile?.timeGoals || []);
+  const [healthComplaints, setHealthComplaints] = useState<string[]>(userProfile?.healthComplaints || []);
+  const [neuroConditions, setNeuroConditions] = useState<string[]>(userProfile?.neuroConditions || []);
 
   useEffect(() => {
     getStates().then((data) => {
@@ -169,6 +176,8 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ onClose }) => {
     setInterests(userProfile.interests || []);
     setShoppingPreferences(userProfile.shoppingPreferences || []);
     setTimeGoals(userProfile.timeGoals || []);
+    setHealthComplaints(userProfile.healthComplaints || []);
+    setNeuroConditions(userProfile.neuroConditions || []);
   }, [userProfile]);
 
   const toggleValue = (list: string[], value: string) =>
@@ -200,6 +209,12 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ onClose }) => {
       interests,
       shoppingPreferences,
       timeGoals,
+      healthComplaints,
+      neuroConditions,
+      ...deriveSemanticTagsFromProfile({
+        healthComplaints,
+        neuroConditions,
+      }),
       updatedAt: new Date().toISOString(),
     };
 
@@ -413,6 +428,44 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ onClose }) => {
                   }`}
                 >
                   {tag}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-sm font-bold text-gray-400 uppercase">Queixas de saúde atuais</h3>
+            <p className="text-xs text-gray-500">Selecione uma ou mais opções.</p>
+            <div className="flex flex-wrap gap-2">
+              {HEALTH_COMPLAINT_OPTIONS.map((item) => (
+                <button
+                  key={`complaint-${item}`}
+                  type="button"
+                  onClick={() => setHealthComplaints((prev) => toggleValue(prev, item))}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                    healthComplaints.includes(item) ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200'
+                  }`}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-sm font-bold text-gray-400 uppercase">Condições neurodivergentes, síndromes e crônicas</h3>
+            <p className="text-xs text-gray-500">Selecione as opções que se aplicam.</p>
+            <div className="flex flex-wrap gap-2">
+              {NEURO_CONDITION_OPTIONS.map((item) => (
+                <button
+                  key={`condition-${item}`}
+                  type="button"
+                  onClick={() => setNeuroConditions((prev) => toggleValue(prev, item))}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                    neuroConditions.includes(item) ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white text-gray-600 border-gray-200'
+                  }`}
+                >
+                  {item}
                 </button>
               ))}
             </div>

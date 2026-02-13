@@ -72,6 +72,7 @@ import {
   normalizeTag,
   normalizeTags,
 } from "../utils/tagTaxonomy";
+import { deriveSemanticTagsFromProfile } from "../utils/profileSemantic";
 
 export interface RewardAvailability {
   isAvailable: boolean;
@@ -1237,8 +1238,18 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     if (!uid) {
       throw new Error("Usuario nao autenticado.");
     }
-    setUserProfile(profile);
-    await updateUserDoc(uid, { profile });
+    const derived = deriveSemanticTagsFromProfile({
+      healthComplaints: profile.healthComplaints,
+      neuroConditions: profile.neuroConditions,
+      extraTags: profile.semanticTags,
+    });
+    const enrichedProfile: UserProfile = {
+      ...profile,
+      semanticTags: derived.semanticTags,
+      recommendedProfessionalSpecialties: derived.recommendedProfessionalSpecialties,
+    };
+    setUserProfile(enrichedProfile);
+    await updateUserDoc(uid, { profile: enrichedProfile });
   };
   const addProfessional = (professionalData: Omit<Professional, "id">) => {
     const newProfessional: Professional = { ...professionalData, id: `prof-${crypto.randomUUID()}` };

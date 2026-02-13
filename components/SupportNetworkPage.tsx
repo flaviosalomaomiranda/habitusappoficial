@@ -178,7 +178,7 @@ const ProfessionalCard: React.FC<{ professional: Professional, isFeatured?: bool
 
 
 const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
-    const { settings, activeSupportNetworkProfessionals, setFamilyLocation } = useAppContext();
+    const { settings, userProfile, activeSupportNetworkProfessionals, setFamilyLocation } = useAppContext();
 
     const [states, setStates] = useState<UF[]>([]);
     const [cities, setCities] = useState<Municipio[]>([]);
@@ -293,15 +293,45 @@ const SupportNetworkPage: React.FC<SupportNetworkPageProps> = ({ onClose }) => {
         });
     }, [selectedState, selectedCity, selectedSpecialty, searchQuery, activeSupportNetworkProfessionals, ufSiglaSelecionada, states]);
 
+    const profileSemanticTags = useMemo(
+        () => (userProfile?.semanticTags || []).map((tag) => normalizeText(tag)),
+        [userProfile?.semanticTags]
+    );
+
+    const profileSpecialties = useMemo(
+        () => (userProfile?.recommendedProfessionalSpecialties || []).map((item) => normalizeText(item)),
+        [userProfile?.recommendedProfessionalSpecialties]
+    );
+
+    const getProfessionalMatchScore = (professional: Professional) => {
+        let score = 0;
+        const profTags = [
+            ...(professional.semanticTags || []),
+            ...(professional.spotlightKeywords || []),
+            ...((professional.specialties && professional.specialties.length > 0) ? professional.specialties : [professional.specialty || ""]),
+        ].map((item) => normalizeText(item)).filter(Boolean);
+        const profSet = new Set(profTags);
+        profileSemanticTags.forEach((tag) => {
+            if (profSet.has(tag)) score += 2;
+        });
+        profileSpecialties.forEach((spec) => {
+            if (profSet.has(spec)) score += 3;
+        });
+        return score;
+    };
+
     const filteredProfessionals = useMemo(() => {
-        if (strictFilteredProfessionals.length > 0) return strictFilteredProfessionals;
+        if (strictFilteredProfessionals.length > 0) {
+            return [...strictFilteredProfessionals].sort((a, b) => getProfessionalMatchScore(b) - getProfessionalMatchScore(a));
+        }
         if (!selectedCity) return [];
-        return activeSupportNetworkProfessionals.filter((p) => {
+        const base = activeSupportNetworkProfessionals.filter((p) => {
             if (p.tier === "master") return false;
             if (String(p.cityId) !== selectedCity) return false;
             return p.name.toLowerCase().includes(searchQuery.toLowerCase());
         });
-    }, [strictFilteredProfessionals, selectedCity, activeSupportNetworkProfessionals, searchQuery]);
+        return base.sort((a, b) => getProfessionalMatchScore(b) - getProfessionalMatchScore(a));
+    }, [strictFilteredProfessionals, selectedCity, activeSupportNetworkProfessionals, searchQuery, profileSemanticTags, profileSpecialties]);
     
     // Novo Agrupamento: Exclusive no topo
     const exclusiveProfessional = useMemo(() => 

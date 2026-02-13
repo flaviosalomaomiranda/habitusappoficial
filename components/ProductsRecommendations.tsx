@@ -26,6 +26,7 @@ const ProductsRecommendations: React.FC<ProductsRecommendationsProps> = ({ onClo
         addTags(userProfile?.interests);
         addTags(userProfile?.shoppingPreferences);
         addTags(userProfile?.timeGoals);
+        addTags(userProfile?.semanticTags);
         Object.entries(settings.semanticTagScores || {})
             .filter(([, score]) => Number(score) > 0)
             .sort((a, b) => Number(b[1]) - Number(a[1]))
