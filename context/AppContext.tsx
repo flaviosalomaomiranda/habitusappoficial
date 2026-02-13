@@ -43,12 +43,14 @@ import {
   doc,
   setDoc,
   deleteDoc,
+  getDocs,
   onSnapshot,
   serverTimestamp,
   query,
   where,
   limit,
   increment,
+  writeBatch,
 } from "firebase/firestore";
 
 import { db } from "../src/lib/firebase";
@@ -174,7 +176,7 @@ interface AppContextType {
   updateUserProfile: (profile: UserProfile) => Promise<void>;
 
   productRecommendations: Recommendation[];
-  setProductRecommendations: Dispatch<SetStateAction<Recommendation[]>>;
+  replaceProductRecommendations: (recommendations: Recommendation[]) => Promise<void>;
   addRecommendation: (recommendation: Omit<Recommendation, "id" | "createdAt" | "updatedAt">) => void;
   updateRecommendation: (recommendation: Recommendation) => void;
   deleteRecommendation: (recommendationId: string) => void;
@@ -388,11 +390,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   });
   const latestSupportNetworkRef = useRef<Professional[]>(supportNetworkProfessionals);
 
-  const [productRecommendations, setProductRecommendations] = useLocalStorage<Recommendation[]>(
-    storageKey("productRecommendations"),
-    PRODUCTS_SEED,
-    ["productRecommendations"]
-  );
+  const [productRecommendations, setProductRecommendations] = useState<Recommendation[]>(PRODUCTS_SEED);
 
   const [isFamilyOwner, setIsFamilyOwner] = useState(false);
   const [canManageMembers, setCanManageMembers] = useState(false);
@@ -699,6 +697,47 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   }, []);
 
   useEffect(() => {
+    const recRef = collection(db, "productRecommendations");
+    const unsub = onSnapshot(
+      recRef,
+      (snap) => {
+        if (snap.empty) {
+          setProductRecommendations(PRODUCTS_SEED);
+          return;
+        }
+        const docs = snap.docs
+          .map((d) => {
+            const data = d.data() as any;
+            return {
+              id: d.id,
+              title: data.title || "",
+              category: data.category || "",
+              description: data.description || "",
+              imageUrl: data.imageUrl || "",
+              ctaLabel: data.ctaLabel || "Ver oferta",
+              linkUrl: data.linkUrl || "",
+              isAffiliate: data.isAffiliate ?? true,
+              isActive: data.isActive ?? true,
+              tags: Array.isArray(data.tags) ? data.tags : [],
+              ageMin: data.ageMin ?? null,
+              ageMax: data.ageMax ?? null,
+              priority: Number(data.priority ?? 0),
+              placement: data.placement,
+              createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || new Date().toISOString()),
+              updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : (data.updatedAt || new Date().toISOString()),
+            } as Recommendation;
+          })
+          .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || a.title.localeCompare(b.title));
+        setProductRecommendations(docs);
+      },
+      (err) => {
+        console.error("Falha ao ler productRecommendations:", err);
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
     const defaultsRef = doc(db, "supportNetworkSettings", "defaultMasters");
     const unsub = onSnapshot(defaultsRef, (snap) => {
       if (!snap.exists()) {
@@ -930,16 +969,66 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       updatedAt: now,
     };
     setProductRecommendations((prev) => [...prev, newRec]);
+    setDoc(
+      doc(db, "productRecommendations", newRec.id),
+      {
+        ...newRec,
+        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        updatedByEmail: auth.currentUser?.email ?? null,
+      },
+      { merge: true }
+    ).catch((err) => console.error("Falha ao criar recomendação:", err));
   };
 
   const updateRecommendation = (updatedRec: Recommendation) => {
+    const nextRec = { ...updatedRec, updatedAt: new Date().toISOString() };
     setProductRecommendations((prev) =>
-      prev.map((rec) => (rec.id === updatedRec.id ? { ...updatedRec, updatedAt: new Date().toISOString() } : rec))
+      prev.map((rec) => (rec.id === nextRec.id ? nextRec : rec))
     );
+    setDoc(
+      doc(db, "productRecommendations", nextRec.id),
+      {
+        ...nextRec,
+        updatedAt: serverTimestamp(),
+        updatedByEmail: auth.currentUser?.email ?? null,
+      },
+      { merge: true }
+    ).catch((err) => console.error("Falha ao atualizar recomendação:", err));
   };
 
   const deleteRecommendation = (recommendationId: string) => {
     setProductRecommendations((prev) => prev.filter((rec) => rec.id !== recommendationId));
+    deleteDoc(doc(db, "productRecommendations", recommendationId)).catch((err) =>
+      console.error("Falha ao excluir recomendação:", err)
+    );
+  };
+
+  const replaceProductRecommendations = async (recommendations: Recommendation[]) => {
+    const batch = writeBatch(db);
+    const colRef = collection(db, "productRecommendations");
+    const existing = await getDocs(colRef);
+    existing.docs.forEach((docSnap) => batch.delete(docSnap.ref));
+
+    const now = new Date().toISOString();
+    const normalized = recommendations.map((rec) => {
+      const id = rec.id || `prod-${crypto.randomUUID()}`;
+      const next: Recommendation = {
+        ...rec,
+        id,
+        createdAt: rec.createdAt || now,
+        updatedAt: now,
+      };
+      batch.set(doc(db, "productRecommendations", id), {
+        ...next,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        updatedByEmail: auth.currentUser?.email ?? null,
+      });
+      return next;
+    });
+    await batch.commit();
+    setProductRecommendations(normalized);
   };
 
   const toggleFavoriteProfessional = (professionalId: string) => {
@@ -1612,7 +1701,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     updateUserProfile,
 
     productRecommendations,
-    setProductRecommendations,
+    replaceProductRecommendations,
     addRecommendation,
     updateRecommendation,
     deleteRecommendation,

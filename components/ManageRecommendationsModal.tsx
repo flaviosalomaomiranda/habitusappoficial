@@ -16,7 +16,7 @@ const ManageRecommendationsModal: React.FC<ManageRecommendationsModalProps> = ({
         checkAdminPin,
         setAdminPin,
         productRecommendations,
-        setProductRecommendations,
+        replaceProductRecommendations,
         addRecommendation,
         updateRecommendation,
         deleteRecommendation
@@ -52,11 +52,11 @@ const ManageRecommendationsModal: React.FC<ManageRecommendationsModalProps> = ({
         alert('Dados de Recomendações copiados para a área de transferência!');
     };
 
-    const handleImport = () => {
+    const handleImport = async () => {
         try {
             const data = JSON.parse(importJson);
             if (Array.isArray(data)) {
-                setProductRecommendations(data);
+                await replaceProductRecommendations(data);
                 setIsImporting(false);
                 setImportJson('');
                 alert('Dados importados com sucesso!');
@@ -68,9 +68,9 @@ const ManageRecommendationsModal: React.FC<ManageRecommendationsModalProps> = ({
         }
     };
     
-    const handleRestoreSeed = () => {
+    const handleRestoreSeed = async () => {
         if (window.confirm('Isso substituirá todas as recomendações atuais pelas iniciais. Deseja continuar?')) {
-            setProductRecommendations(PRODUCTS_SEED);
+            await replaceProductRecommendations(PRODUCTS_SEED as Recommendation[]);
         }
     };
 
