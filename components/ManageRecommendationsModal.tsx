@@ -220,6 +220,18 @@ const RecommendationForm: React.FC<RecommendationFormProps> = ({ recommendation,
         const next = currentTags.filter((t) => t !== tag);
         setFormState((prev) => ({ ...prev, tags: next.join(', ') }));
     };
+
+    const applyAutomaticTags = () => {
+        const inferred = inferSemanticTags(formState.title, formState.description, formState.category);
+        const merged = Array.from(
+            new Set(
+                [...currentTags, ...TAG_SUGGESTIONS_BASE, ...inferred]
+                    .map(normalizeTag)
+                    .filter(Boolean)
+            )
+        );
+        setFormState((prev) => ({ ...prev, tags: merged.join(', ') }));
+    };
     
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
@@ -275,7 +287,16 @@ const RecommendationForm: React.FC<RecommendationFormProps> = ({ recommendation,
                     </div>
                     <input name="tags" value={formState.tags} onChange={handleChange} placeholder="Tags (separadas por vírgula)" className="p-2 border rounded w-full" />
                     <div className="space-y-2">
-                        <div className="text-xs font-semibold text-gray-500">Tags atuais</div>
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="text-xs font-semibold text-gray-500">Tags atuais</div>
+                            <button
+                                type="button"
+                                onClick={applyAutomaticTags}
+                                className="px-2 py-1 rounded-md text-xs font-semibold bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                            >
+                                Aplicar tags automáticas
+                            </button>
+                        </div>
                         <div className="flex flex-wrap gap-2">
                             {currentTags.length === 0 ? (
                                 <span className="text-xs text-gray-400">Nenhuma tag definida.</span>
