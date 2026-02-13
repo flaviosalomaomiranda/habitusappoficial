@@ -1,9 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { Recommendation } from '../types';
 import { PRODUCTS_SEED, RECOMMENDATION_CATEGORIES } from '../data/products';
 import { PlusIcon } from './icons/MiscIcons';
+import { inferSemanticTags } from '../utils/semanticTags';
 
 interface ManageRecommendationsModalProps {
     onClose: () => void;
@@ -152,6 +153,32 @@ interface RecommendationFormProps {
     recommendation: Recommendation | null,
     onClose: () => void;
 }
+
+const TAG_SUGGESTIONS_BASE = [
+    '#fitness',
+    '#saude',
+    '#cardio',
+    '#lazer',
+    '#entretenimento',
+    '#cinema',
+    '#alimentacao',
+    '#sono',
+    '#educacao',
+    '#organizacao',
+];
+
+const normalizeTag = (tag: string) => {
+    const clean = tag.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!clean) return '';
+    return clean.startsWith('#') ? clean : `#${clean}`;
+};
+
+const parseTags = (value: string) =>
+    value
+        .split(',')
+        .map(normalizeTag)
+        .filter(Boolean);
+
 const RecommendationForm: React.FC<RecommendationFormProps> = ({ recommendation, onClose }) => {
     const { addRecommendation, updateRecommendation, deleteRecommendation } = useAppContext();
     const isEditing = !!recommendation;
@@ -170,6 +197,29 @@ const RecommendationForm: React.FC<RecommendationFormProps> = ({ recommendation,
         ageMax: recommendation?.ageMax ?? null,
         priority: recommendation?.priority ?? 0,
     });
+
+    const currentTags = useMemo(() => {
+        return Array.from(new Set(parseTags(formState.tags)));
+    }, [formState.tags]);
+
+    const suggestedTags = useMemo(() => {
+        const inferred = inferSemanticTags(formState.title, formState.description, formState.category);
+        const merged = Array.from(new Set([...TAG_SUGGESTIONS_BASE, ...inferred].map(normalizeTag).filter(Boolean)));
+        return merged.filter((tag) => !currentTags.includes(tag));
+    }, [formState.title, formState.description, formState.category, currentTags]);
+
+    const addTag = (tag: string) => {
+        const normalized = normalizeTag(tag);
+        if (!normalized) return;
+        if (currentTags.includes(normalized)) return;
+        const next = [...currentTags, normalized];
+        setFormState((prev) => ({ ...prev, tags: next.join(', ') }));
+    };
+
+    const removeTag = (tag: string) => {
+        const next = currentTags.filter((t) => t !== tag);
+        setFormState((prev) => ({ ...prev, tags: next.join(', ') }));
+    };
     
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
@@ -224,6 +274,39 @@ const RecommendationForm: React.FC<RecommendationFormProps> = ({ recommendation,
                         <input name="ctaLabel" value={formState.ctaLabel} onChange={handleChange} placeholder="Texto do Botão (Ex: Ver oferta)" className="p-2 border rounded w-full" />
                     </div>
                     <input name="tags" value={formState.tags} onChange={handleChange} placeholder="Tags (separadas por vírgula)" className="p-2 border rounded w-full" />
+                    <div className="space-y-2">
+                        <div className="text-xs font-semibold text-gray-500">Tags atuais</div>
+                        <div className="flex flex-wrap gap-2">
+                            {currentTags.length === 0 ? (
+                                <span className="text-xs text-gray-400">Nenhuma tag definida.</span>
+                            ) : (
+                                currentTags.map((tag) => (
+                                    <button
+                                        key={`current-${tag}`}
+                                        type="button"
+                                        onClick={() => removeTag(tag)}
+                                        className="px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 hover:bg-purple-200"
+                                        title="Remover tag"
+                                    >
+                                        {tag} ×
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                        <div className="text-xs font-semibold text-gray-500">Sugestões de tags</div>
+                        <div className="flex flex-wrap gap-2">
+                            {suggestedTags.map((tag) => (
+                                <button
+                                    key={`suggested-${tag}`}
+                                    type="button"
+                                    onClick={() => addTag(tag)}
+                                    className="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                >
+                                    + {tag}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <input name="ageMin" type="number" value={formState.ageMin || ''} onChange={handleChange} placeholder="Idade Mín." className="p-2 border rounded w-full" />
                         <input name="ageMax" type="number" value={formState.ageMax || ''} onChange={handleChange} placeholder="Idade Máx." className="p-2 border rounded w-full" />
