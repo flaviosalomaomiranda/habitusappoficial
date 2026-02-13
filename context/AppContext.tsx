@@ -326,6 +326,25 @@ function parseFirestoreDocumentToRoutineTemplate(doc: any): RoutineTemplate | nu
   } as RoutineTemplate;
 }
 
+function normalizeRecommendationTag(tag: string): string {
+  const clean = tag.trim().toLowerCase().replace(/\s+/g, "_");
+  if (!clean) return "";
+  return clean.startsWith("#") ? clean : `#${clean}`;
+}
+
+function buildRecommendationTags(input: {
+  title?: string;
+  description?: string;
+  category?: string;
+  tags?: string[];
+}): string[] {
+  const inferred = inferSemanticTags(input.title, input.description, input.category);
+  const combined = [...(input.tags || []), ...inferred]
+    .map((t) => normalizeRecommendationTag(t))
+    .filter(Boolean);
+  return Array.from(new Set(combined));
+}
+
 export const AppProvider = ({ children }: PropsWithChildren) => {
   const { confirm, showToast } = useFeedback();
   // ✅ Agora as crianças vêm do Firestore
@@ -708,6 +727,12 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
         const docs = snap.docs
           .map((d) => {
             const data = d.data() as any;
+            const normalizedTags = buildRecommendationTags({
+              title: data.title,
+              description: data.description,
+              category: data.category,
+              tags: Array.isArray(data.tags) ? data.tags : [],
+            });
             return {
               id: d.id,
               title: data.title || "",
@@ -718,7 +743,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
               linkUrl: data.linkUrl || "",
               isAffiliate: data.isAffiliate ?? true,
               isActive: data.isActive ?? true,
-              tags: Array.isArray(data.tags) ? data.tags : [],
+              tags: normalizedTags,
               ageMin: data.ageMin ?? null,
               ageMax: data.ageMax ?? null,
               priority: Number(data.priority ?? 0),
@@ -964,6 +989,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     const now = new Date().toISOString();
     const newRec: Recommendation = {
       ...data,
+      tags: buildRecommendationTags(data),
       id: `prod-${crypto.randomUUID()}`,
       createdAt: now,
       updatedAt: now,
@@ -982,7 +1008,11 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   };
 
   const updateRecommendation = (updatedRec: Recommendation) => {
-    const nextRec = { ...updatedRec, updatedAt: new Date().toISOString() };
+    const nextRec = {
+      ...updatedRec,
+      tags: buildRecommendationTags(updatedRec),
+      updatedAt: new Date().toISOString(),
+    };
     setProductRecommendations((prev) =>
       prev.map((rec) => (rec.id === nextRec.id ? nextRec : rec))
     );
@@ -1015,6 +1045,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       const id = rec.id || `prod-${crypto.randomUUID()}`;
       const next: Recommendation = {
         ...rec,
+        tags: buildRecommendationTags(rec),
         id,
         createdAt: rec.createdAt || now,
         updatedAt: now,

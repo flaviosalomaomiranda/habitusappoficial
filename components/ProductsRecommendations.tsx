@@ -10,7 +10,7 @@ interface ProductsRecommendationsProps {
 }
 
 const ProductsRecommendations: React.FC<ProductsRecommendationsProps> = ({ onClose }) => {
-    const { productRecommendations, userProfile } = useAppContext();
+    const { productRecommendations, userProfile, settings } = useAppContext();
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string | 'Todos'>('Todos');
     const profileTags = useMemo(() => {
@@ -26,13 +26,32 @@ const ProductsRecommendations: React.FC<ProductsRecommendationsProps> = ({ onClo
         addTags(userProfile?.interests);
         addTags(userProfile?.shoppingPreferences);
         addTags(userProfile?.timeGoals);
+        Object.entries(settings.semanticTagScores || {})
+            .filter(([, score]) => Number(score) > 0)
+            .sort((a, b) => Number(b[1]) - Number(a[1]))
+            .slice(0, 8)
+            .forEach(([tag]) => tags.add(tag.toLowerCase()));
         return Array.from(tags);
-    }, [userProfile]);
+    }, [userProfile, settings.semanticTagScores]);
+
+    const getTagMatchScore = (product: Recommendation) => {
+        if (!Array.isArray(product.tags) || product.tags.length === 0) return 0;
+        const profileSet = new Set(profileTags.map((tag) => tag.toLowerCase()));
+        return product.tags.reduce((acc, tag) => {
+            if (!profileSet.has(tag.toLowerCase())) return acc;
+            const semanticWeight = Number(settings.semanticTagScores?.[tag] || 0);
+            return acc + 1 + Math.max(0, semanticWeight);
+        }, 0);
+    };
 
     const filteredProducts = useMemo(() => {
         let products = productRecommendations
             .filter(p => p.isActive)
-            .sort((a, b) => (b.priority || 0) - (a.priority || 0) || a.title.localeCompare(b.title));
+            .sort((a, b) => {
+                const scoreDiff = getTagMatchScore(b) - getTagMatchScore(a);
+                if (scoreDiff !== 0) return scoreDiff;
+                return (b.priority || 0) - (a.priority || 0) || a.title.localeCompare(b.title);
+            });
 
         if (profileTags.length > 0) {
             const taggedProducts = products.filter(p =>
@@ -55,12 +74,12 @@ const ProductsRecommendations: React.FC<ProductsRecommendationsProps> = ({ onClo
         }
 
         return products;
-    }, [searchQuery, selectedCategory, productRecommendations, profileTags]);
+    }, [searchQuery, selectedCategory, productRecommendations, profileTags, settings.semanticTagScores]);
 
     const isRecommendedForProfile = (product: Recommendation) => {
         if (profileTags.length === 0) return false;
         if (!Array.isArray(product.tags)) return false;
-        return product.tags.some(tag => profileTags.includes(tag.toLowerCase()));
+        return getTagMatchScore(product) > 0;
     };
     
     const allCategories: string[] = ['Todos', ...RECOMMENDATION_CATEGORIES];
