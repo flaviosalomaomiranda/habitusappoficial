@@ -26,3 +26,8 @@ pnpm-debug.log*
 # firebase local
 .firebase/
 
+# local toolchains / temporary archives
+.tools/
+functions/node_modules/
+.tmp-*.zip
+
