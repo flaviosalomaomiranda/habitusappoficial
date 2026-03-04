@@ -42,6 +42,10 @@ const RewardForm: React.FC<RewardFormProps> = ({ reward, onSave, onCancel }) => 
       setFormError('Informe um custo valido.');
       return;
     }
+    if (limitPeriod !== 'NONE' && (!Number.isFinite(limitCount) || limitCount <= 0)) {
+      setFormError('Informe um limite valido.');
+      return;
+    }
 
     setFormError(null);
     
@@ -194,9 +198,7 @@ const RewardForm: React.FC<RewardFormProps> = ({ reward, onSave, onCancel }) => 
             <div className="flex justify-end gap-4">
                 <button type="button" onClick={onCancel} className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold">Cancelar</button>
                 <button
-                  type="button"
-                  onClick={saveReward}
-                  onTouchStart={saveReward}
+                  type="submit"
                   className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold"
                 >
                   {isEditing ? 'Salvar' : 'Criar'}

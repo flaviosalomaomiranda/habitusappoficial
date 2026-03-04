@@ -84,6 +84,21 @@ const ProductsRecommendations: React.FC<ProductsRecommendationsProps> = ({ onClo
     };
     
     const allCategories: string[] = ['Todos', ...RECOMMENDATION_CATEGORIES];
+    const getBadgeClassName = (type?: Recommendation['badgeType']) => {
+        if (type === 'app_exclusive') return 'bg-purple-600 text-white';
+        if (type === 'coupon') return 'bg-emerald-600 text-white';
+        if (type === 'urgency') return 'bg-amber-500 text-white';
+        return 'bg-rose-600 text-white';
+    };
+    const getCategoryClassName = (category?: string) => {
+        const normalized = (category || '').toLowerCase();
+        if (normalized.includes('livro') || normalized.includes('leitura')) return 'bg-blue-100 text-blue-700';
+        if (normalized.includes('brinquedo')) return 'bg-orange-100 text-orange-700';
+        if (normalized.includes('tecnologia')) return 'bg-slate-100 text-slate-700';
+        if (normalized.includes('sono')) return 'bg-indigo-100 text-indigo-700';
+        if (normalized.includes('rotina')) return 'bg-purple-100 text-purple-700';
+        return 'bg-gray-100 text-gray-700';
+    };
 
     return (
         <div className="flex-1 overflow-y-auto w-full max-w-4xl mx-auto px-4 md:px-6 animate-in fade-in">
@@ -125,21 +140,35 @@ const ProductsRecommendations: React.FC<ProductsRecommendationsProps> = ({ onClo
 
             <main className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-4 pb-12">
                 {filteredProducts.map(product => (
-                    <div key={product.id} className="bg-white rounded-xl p-3 flex gap-3 items-start border border-gray-100 shadow-sm">
-                        <img 
-                            src={product.imageUrl || 'https://via.placeholder.com/160'} 
-                            alt={product.title}
-                            className="w-24 h-24 object-cover rounded-lg flex-shrink-0 bg-gray-100"
-                        />
-                        <div className="flex-1">
-                            <h3 className="font-bold text-gray-800 leading-tight">{product.title}</h3>
+                    <div key={product.id} className="relative bg-white rounded-xl p-3 flex gap-3 items-start border border-gray-100 shadow-sm">
+                        {product.badgeActive && product.badgeText && (
+                            <span className={`absolute top-2 right-2 z-10 max-w-[126px] px-2 py-1 rounded-md text-[10px] leading-tight font-black uppercase tracking-tight whitespace-normal break-words text-center line-clamp-2 ${getBadgeClassName(product.badgeType)}`}>
+                                {product.badgeText}
+                            </span>
+                        )}
+                        <div className="relative flex-shrink-0">
+                            <img 
+                                src={product.imageUrl || 'https://via.placeholder.com/160'} 
+                                alt={product.title}
+                                className="w-24 h-24 object-cover rounded-lg bg-gray-100"
+                            />
+                        </div>
+                        <div className={`flex-1 min-w-0 ${product.badgeActive && product.badgeText ? 'pr-28' : ''}`}>
+                            <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                                {product.category && (
+                                    <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${getCategoryClassName(product.category)}`}>
+                                        {product.category}
+                                    </span>
+                                )}
+                                {product.isAffiliate && <span className="text-[10px] bg-gray-100 text-gray-600 font-bold px-1.5 py-0.5 rounded">Link afiliado</span>}
+                            </div>
+                            <h3 className="font-bold text-gray-800 leading-tight line-clamp-2">{product.title}</h3>
                             {isRecommendedForProfile(product) && (
                                 <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700 mt-1">
                                     Recomendado para voce
                                 </span>
                             )}
-                            {product.isAffiliate && <span className="text-[10px] bg-gray-100 text-gray-600 font-bold px-1.5 py-0.5 rounded">Link de afiliado</span>}
-                            <p className="text-xs text-gray-500 mt-1 line-clamp-2">{product.description}</p>
+                            <p className="text-xs text-gray-500 mt-1.5 line-clamp-3">{product.description}</p>
                             <button 
                                 onClick={() => window.open(product.linkUrl, '_blank', 'noopener,noreferrer')}
                                 className="mt-2 bg-purple-100 text-purple-700 font-bold text-xs py-1.5 px-3 rounded-lg hover:bg-purple-200 transition-colors"

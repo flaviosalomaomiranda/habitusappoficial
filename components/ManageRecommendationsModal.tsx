@@ -127,6 +127,11 @@ const ManageRecommendationsModal: React.FC<ManageRecommendationsModalProps> = ({
                             <div key={rec.id} className="bg-white border rounded-lg p-3 flex flex-col">
                                 <p className="text-xs text-gray-400">{rec.category}</p>
                                 <p className="font-bold flex-grow">{rec.title}</p>
+                                {rec.badgeActive && rec.badgeText && (
+                                    <span className="mt-2 inline-flex self-start px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                                        {rec.badgeText}
+                                    </span>
+                                )}
                                 <div className="flex items-center gap-2 mt-2 text-xs">
                                     <span className={`px-2 py-0.5 rounded-full font-semibold ${rec.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                                         {rec.isActive ? 'Ativo' : 'Inativo'}
@@ -167,6 +172,13 @@ const TAG_SUGGESTIONS_BASE = [
     '#organizacao',
 ];
 
+const BADGE_PRESETS: Array<{ label: string; text: string; type: NonNullable<Recommendation["badgeType"]> }> = [
+    { label: "Oferta Especial", text: "OFERTA ESPECIAL", type: "offer" },
+    { label: "Só no App", text: "DESCONTO SÓ NO APP", type: "app_exclusive" },
+    { label: "Cupom Exclusivo", text: "CUPOM EXCLUSIVO", type: "coupon" },
+    { label: "Últimas Unidades", text: "ÚLTIMAS UNIDADES", type: "urgency" },
+];
+
 const normalizeTag = (tag: string) => {
     const clean = tag.trim().toLowerCase().replace(/\s+/g, '_');
     if (!clean) return '';
@@ -182,6 +194,9 @@ const parseTags = (value: string) =>
 const RecommendationForm: React.FC<RecommendationFormProps> = ({ recommendation, onClose }) => {
     const { addRecommendation, updateRecommendation, deleteRecommendation } = useAppContext();
     const isEditing = !!recommendation;
+    const [formError, setFormError] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const [cloudStatus, setCloudStatus] = useState<'idle' | 'saved'>('idle');
 
     const [formState, setFormState] = useState<Partial<Omit<Recommendation, 'tags'>> & { tags: string }>({
         title: recommendation?.title || '',
@@ -196,6 +211,9 @@ const RecommendationForm: React.FC<RecommendationFormProps> = ({ recommendation,
         ageMin: recommendation?.ageMin ?? null,
         ageMax: recommendation?.ageMax ?? null,
         priority: recommendation?.priority ?? 0,
+        badgeText: recommendation?.badgeText || '',
+        badgeType: recommendation?.badgeType || 'offer',
+        badgeActive: recommendation?.badgeActive ?? false,
     });
 
     const currentTags = useMemo(() => {
@@ -232,6 +250,17 @@ const RecommendationForm: React.FC<RecommendationFormProps> = ({ recommendation,
         );
         setFormState((prev) => ({ ...prev, tags: merged.join(', ') }));
     };
+
+    const applyBadgePreset = (preset: { text: string; type: NonNullable<Recommendation["badgeType"]> }) => {
+        setFormState((prev) => ({
+            ...prev,
+            badgeActive: true,
+            badgeText: preset.text,
+            badgeType: preset.type,
+        }));
+        if (formError) setFormError(null);
+        if (cloudStatus !== 'idle') setCloudStatus('idle');
+    };
     
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
@@ -244,23 +273,57 @@ const RecommendationForm: React.FC<RecommendationFormProps> = ({ recommendation,
         } else {
             setFormState(prev => ({ ...prev, [name]: value }));
         }
+        if (formError) setFormError(null);
+        if (cloudStatus !== 'idle') setCloudStatus('idle');
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        const tagsArray = formState.tags.split(',').map(t => t.trim()).filter(Boolean);
-        
+    const persistRecommendation = async () => {
+        if (isSaving) return;
+        const title = String(formState.title || '').trim();
+        const linkUrl = String(formState.linkUrl || '').trim();
+        if (!title) {
+            setFormError('Informe o título da recomendação.');
+            return;
+        }
+        if (!linkUrl) {
+            setFormError('Informe a URL do link.');
+            return;
+        }
+
+        const tagsArray = String(formState.tags || '')
+            .split(',')
+            .map((t) => t.trim())
+            .filter(Boolean);
+
         const finalData = {
             ...formState,
+            title,
+            linkUrl,
+            badgeText: String(formState.badgeText || '').trim(),
             tags: tagsArray,
         } as Omit<Recommendation, 'id' | 'createdAt' | 'updatedAt'>;
 
-        if (isEditing && recommendation) {
-            updateRecommendation({ ...recommendation, ...finalData });
-        } else {
-            addRecommendation(finalData);
+        try {
+            setIsSaving(true);
+            setFormError(null);
+            if (isEditing && recommendation) {
+                await updateRecommendation({ ...recommendation, ...finalData });
+            } else {
+                await addRecommendation(finalData);
+            }
+            setCloudStatus('saved');
+            setTimeout(() => onClose(), 500);
+        } catch (error) {
+            console.error('Falha ao salvar recomendação:', error);
+            setFormError(`Não foi possível salvar. ${error instanceof Error ? error.message : 'Tente novamente.'}`);
+        } finally {
+            setIsSaving(false);
         }
-        onClose();
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        await persistRecommendation();
     };
     
     const handleDeleteClick = () => {
@@ -276,13 +339,13 @@ const RecommendationForm: React.FC<RecommendationFormProps> = ({ recommendation,
                 <h3 className="text-xl font-bold mb-4 flex-shrink-0">{isEditing ? 'Editar' : 'Adicionar'} Recomendação</h3>
                 <div className="overflow-y-auto pr-2 -mr-2 space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <input name="title" value={formState.title} onChange={handleChange} placeholder="Título" className="p-2 border rounded w-full" required />
+                        <input name="title" value={formState.title} onChange={handleChange} placeholder="Título" className="p-2 border rounded w-full" />
                         <select name="category" value={formState.category} onChange={handleChange} className="p-2 border rounded bg-white w-full"><option value="">Categoria</option>{RECOMMENDATION_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>
                     </div>
                     <textarea name="description" value={formState.description} onChange={handleChange} placeholder="Descrição" className="p-2 border rounded w-full h-20"></textarea>
                     <input name="imageUrl" value={formState.imageUrl} onChange={handleChange} placeholder="URL da Imagem" className="p-2 border rounded w-full" />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <input name="linkUrl" value={formState.linkUrl} onChange={handleChange} placeholder="URL do Link" className="p-2 border rounded w-full" required />
+                        <input name="linkUrl" value={formState.linkUrl} onChange={handleChange} placeholder="URL do Link" className="p-2 border rounded w-full" />
                         <input name="ctaLabel" value={formState.ctaLabel} onChange={handleChange} placeholder="Texto do Botão (Ex: Ver oferta)" className="p-2 border rounded w-full" />
                     </div>
                     <input name="tags" value={formState.tags} onChange={handleChange} placeholder="Tags (separadas por vírgula)" className="p-2 border rounded w-full" />
@@ -333,13 +396,52 @@ const RecommendationForm: React.FC<RecommendationFormProps> = ({ recommendation,
                         <input name="ageMax" type="number" value={formState.ageMax || ''} onChange={handleChange} placeholder="Idade Máx." className="p-2 border rounded w-full" />
                         <input name="priority" type="number" value={formState.priority || ''} onChange={handleChange} placeholder="Prioridade" className="p-2 border rounded w-full" />
                     </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input
+                            name="badgeText"
+                            value={formState.badgeText || ''}
+                            onChange={handleChange}
+                            placeholder="Texto do selo (Ex: OFERTA ESPECIAL)"
+                            className="p-2 border rounded w-full"
+                            maxLength={28}
+                        />
+                        <select name="badgeType" value={String(formState.badgeType || 'offer')} onChange={handleChange} className="p-2 border rounded bg-white w-full">
+                            <option value="offer">Oferta</option>
+                            <option value="app_exclusive">App exclusivo</option>
+                            <option value="coupon">Cupom</option>
+                            <option value="urgency">Urgência</option>
+                        </select>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {BADGE_PRESETS.map((preset) => (
+                            <button
+                                key={preset.label}
+                                type="button"
+                                onClick={() => applyBadgePreset(preset)}
+                                className="px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 hover:bg-purple-200"
+                            >
+                                {preset.label}
+                            </button>
+                        ))}
+                    </div>
                     <div className="flex gap-6"><label className="flex items-center gap-2"><input type="checkbox" name="isActive" checked={formState.isActive} onChange={handleChange}/> Ativo</label><label className="flex items-center gap-2"><input type="checkbox" name="isAffiliate" checked={formState.isAffiliate} onChange={handleChange} /> Afiliado</label></div>
+                    <div className="flex gap-6">
+                        <label className="flex items-center gap-2">
+                            <input type="checkbox" name="badgeActive" checked={Boolean(formState.badgeActive)} onChange={handleChange} />
+                            Selo ativo
+                        </label>
+                    </div>
                 </div>
+                {formError && <p className="mt-3 text-sm font-semibold text-red-600">{formError}</p>}
                 <div className="flex justify-between mt-6 pt-4 border-t flex-shrink-0">
-                    <div>{isEditing && <button type="button" onClick={handleDeleteClick} className="px-4 py-2 bg-red-100 text-red-600 rounded-lg font-semibold">Excluir</button>}</div>
+                    <div className="flex items-center gap-3">
+                        {isEditing && <button type="button" onClick={handleDeleteClick} className="px-4 py-2 bg-red-100 text-red-600 rounded-lg font-semibold">Excluir</button>}
+                        {isSaving && <span className="text-xs font-semibold text-amber-700">Salvando...</span>}
+                        {!isSaving && cloudStatus === 'saved' && <span className="text-xs font-semibold text-emerald-700">Salvo na nuvem</span>}
+                    </div>
                     <div className="flex-1 flex justify-end gap-3">
-                        <button type="button" onClick={onClose} className="px-5 py-2 bg-gray-200 rounded-lg font-semibold">Cancelar</button>
-                        <button type="submit" className="px-5 py-2 bg-purple-600 text-white rounded-lg font-bold">{isEditing ? 'Salvar' : 'Adicionar'}</button>
+                        <button type="button" onClick={onClose} disabled={isSaving} className="px-5 py-2 bg-gray-200 rounded-lg font-semibold disabled:opacity-60">Cancelar</button>
+                        <button type="button" onClick={persistRecommendation} disabled={isSaving} className="px-5 py-2 bg-purple-600 text-white rounded-lg font-bold disabled:opacity-60">{isSaving ? 'Salvando...' : isEditing ? 'Salvar' : 'Adicionar'}</button>
                     </div>
                 </div>
             </form>

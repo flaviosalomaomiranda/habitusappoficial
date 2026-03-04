@@ -8,16 +8,24 @@ interface ManageSupportNetworkPricingModalProps {
 }
 
 const tierLabels: Record<ProfessionalTier, string> = {
+  free: "Free",
   verified: "Lista Vip",
+  vip: "VIP",
   top: "Pro (Rodízio)",
+  pro: "PRO",
   exclusive: "Premium (1 por Especialidade)",
+  premium: "PREMIUM",
   master: "Master (1 por Cidade)",
 };
 
 const emptyPlans: SupportNetworkPricing["plans"] = {
+  free: { monthly: 0, annual: 0 },
   verified: { monthly: 0, annual: 0 },
+  vip: { monthly: 0, annual: 0 },
   top: { monthly: 0, annual: 0 },
+  pro: { monthly: 0, annual: 0 },
   exclusive: { monthly: 0, annual: 0 },
+  premium: { monthly: 0, annual: 0 },
   master: { monthly: 0, annual: 0 },
 };
 

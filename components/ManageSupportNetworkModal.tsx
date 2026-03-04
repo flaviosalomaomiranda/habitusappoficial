@@ -1,16 +1,18 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { ExclusiveRoutineTemplate, Manager, Professional } from '../types';
+import { Manager, Professional, ProfessionalPlanType } from '../types';
 import { getStates, getCitiesByState, UF, Municipio } from '../services/ibgeService';
-import { SPECIALTIES } from '../data/supportNetworkData';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { SPECIALTIES, SUPPORT_NETWORK_AREAS, SUPPORT_NETWORK_SPECIALTIES_BY_AREA } from '../data/supportNetworkData';
+import { ref, uploadBytes, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/lib/firebase';
 import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { db } from '../src/lib/firebase';
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../src/lib/firebase";
 import { isAdminUser } from "../src/lib/admin";
+import { buildProfessionalConnectCode } from "../utils/professionalCode";
+import { PROFESSIONAL_PLAN_CONFIG } from "../utils/professionalPlan";
 
 interface ManageSupportNetworkModalProps {
     onClose: () => void;
@@ -18,22 +20,18 @@ interface ManageSupportNetworkModalProps {
 }
 
 const PROFILE_IMAGE_MAX_BYTES = 1_500_000;
-const PROFILE_IMAGE_ALLOWED_SIZES = [
-    { width: 400, height: 400 },
-    { width: 600, height: 600 },
-];
-
+const PROFILE_IMAGE_WIDTH = 600;
+const PROFILE_IMAGE_HEIGHT = 600;
 const MASTER_VIDEO_MAX_BYTES = 20_000_000;
 const MASTER_VIDEO_MAX_SECONDS = 16;
 const MASTER_VIDEO_WIDTH = 1920;
 const MASTER_VIDEO_HEIGHT = 1080;
+const VIDEO_UPLOAD_TIMEOUT_MS = 120_000;
 
 const MAX_SPECIALTIES = 5;
 const MAX_OTHER_SPECIALTIES = 3;
 const BIO_MAX_CHARS = 180;
-
 const formatBytes = (bytes: number) => `${(bytes / 1_000_000).toFixed(1)}MB`;
-const countChars = (text: string) => text.length;
 const buildDefaultBookingMessage = (name: string, greeting: "dr" | "dra" | "clinic") => {
     if (greeting === "clinic") {
         return "Oi, pessoal! Estou usando o Habitus App e gostaria de agendar uma consulta.";
@@ -59,6 +57,18 @@ const getImageDimensions = (file: File): Promise<{ width: number; height: number
         img.src = url;
     });
 
+const getUploadErrorMessage = (err: unknown, fallback: string) => {
+    const message = (err as { message?: string; code?: string } | null)?.message || "";
+    const code = (err as { code?: string } | null)?.code || "";
+    if (message.includes("Upload demorou demais")) return message;
+    if (code.includes("storage/unauthorized")) return "Sem permissão para upload (Storage).";
+    if (code.includes("storage/canceled")) return "Upload cancelado.";
+    if (code.includes("storage/quota-exceeded")) return "Limite do Storage excedido.";
+    if (code.includes("storage/retry-limit-exceeded")) return "Tempo de upload excedido. Tente novamente.";
+    if (code.includes("storage/invalid-format")) return "Formato inválido para upload.";
+    if (message.trim()) return message;
+    return fallback;
+};
 const getVideoMetadata = (file: File): Promise<{ duration: number; width: number; height: number }> =>
     new Promise((resolve, reject) => {
         const video = document.createElement("video");
@@ -134,11 +144,38 @@ const addMonthsToIsoDate = (dateStr: string, months: number) => {
     return `${yy}-${mm}-${dd}`;
 };
 
+const formatDateIso = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+};
+
+const escapeCsvValue = (value: string | number) => {
+    const raw = String(value ?? "");
+    if (raw.includes(",") || raw.includes('"') || raw.includes("\n")) {
+        return `"${raw.replace(/"/g, '""')}"`;
+    }
+    return raw;
+};
+
 const getTierLabel = (tier?: string) => {
+    if (tier === "free") return "FREE";
     if (tier === "master") return "MASTER";
     if (tier === "exclusive") return "PREMIUM";
     if (tier === "top") return "PRO";
     return "LISTA VIP";
+};
+
+const isProfessionalPanelTier = (tier?: string) => tier === "top" || tier === "exclusive" || tier === "master";
+
+const mapTierToPlanType = (tier?: string): ProfessionalPlanType => {
+    const normalized = String(tier || "").trim().toLowerCase();
+    if (normalized === "master") return "MASTER";
+    if (normalized === "exclusive" || normalized === "premium") return "PREMIUM";
+    if (normalized === "top" || normalized === "pro") return "PRO";
+    if (normalized === "verified" || normalized === "vip") return "VIP";
+    return "FREE";
 };
 
 const readFirestorePrimitive = (value: any): any => {
@@ -203,8 +240,47 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
     const todayStr = new Date().toISOString().slice(0, 10);
     const [restProfessionals, setRestProfessionals] = useState<Professional[]>([]);
     const [filterUf, setFilterUf] = useState("");
-    const [filterTier, setFilterTier] = useState<"" | "master" | "top" | "exclusive" | "verified">("");
+    const [filterTier, setFilterTier] = useState<"" | "free" | "master" | "top" | "exclusive" | "verified">("");
     const [reportProfessional, setReportProfessional] = useState<Professional | null>(null);
+    const [quotaSettings, setQuotaSettings] = useState<{
+        defaults: { premiumHeroTarget: number; proCarouselTarget: number };
+        byCityId: Record<string, { premiumHeroTarget?: number; proCarouselTarget?: number; cityName?: string; uf?: string }>;
+    }>({
+        defaults: { premiumHeroTarget: 400, proCarouselTarget: 250 },
+        byCityId: {},
+    });
+    const [selectedQuotaCityId, setSelectedQuotaCityId] = useState("");
+    const [quotaPremiumValue, setQuotaPremiumValue] = useState("400");
+    const [quotaProValue, setQuotaProValue] = useState("250");
+    const [quotaDefaultPremiumValue, setQuotaDefaultPremiumValue] = useState("400");
+    const [quotaDefaultProValue, setQuotaDefaultProValue] = useState("250");
+    const [isSavingQuota, setIsSavingQuota] = useState(false);
+    const [isSyncingCatalog, setIsSyncingCatalog] = useState(false);
+    const [performanceDate, setPerformanceDate] = useState(todayStr);
+    const [performanceCityId, setPerformanceCityId] = useState("");
+    const [performanceWindowDays, setPerformanceWindowDays] = useState<7 | 30>(7);
+    const [isLoadingPerformance, setIsLoadingPerformance] = useState(false);
+    const [performanceRows, setPerformanceRows] = useState<Array<{
+        professionalId: string;
+        professionalName: string;
+        cityId: string;
+        cityLabel: string;
+        slotGroup: string;
+        impressions: number;
+        contactClicks: number;
+        whatsappClicks: number;
+        totalContacts: number;
+        ctrPercent: number;
+        target: number;
+        saturationPercent: number;
+        isAlert: boolean;
+    }>>([]);
+    const [performanceTrendRows, setPerformanceTrendRows] = useState<Array<{
+        date: string;
+        impressions: number;
+        totalContacts: number;
+        ctrPercent: number;
+    }>>([]);
 
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, (user) => {
@@ -266,6 +342,331 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
         return Array.from(byId.values());
     }, [supportNetworkProfessionals, restProfessionals]);
     const availableUfs = Array.from(new Set(professionalsForAdmin.map((p) => p.uf).filter(Boolean))).sort();
+    const availableCities = React.useMemo(() => {
+        const byId = new Map<string, { cityId: string; cityName: string; uf: string }>();
+        professionalsForAdmin.forEach((prof) => {
+            const cityId = String(prof.cityId || "").trim();
+            if (!cityId) return;
+            if (!byId.has(cityId)) {
+                byId.set(cityId, {
+                    cityId,
+                    cityName: prof.city || cityId,
+                    uf: prof.uf || "",
+                });
+            }
+        });
+        return Array.from(byId.values()).sort((a, b) => {
+            if (a.uf !== b.uf) return a.uf.localeCompare(b.uf);
+            return a.cityName.localeCompare(b.cityName);
+        });
+    }, [professionalsForAdmin]);
+    const professionalsById = React.useMemo(() => {
+        const map = new Map<string, Professional>();
+        professionalsForAdmin.forEach((prof) => map.set(prof.id, prof));
+        return map;
+    }, [professionalsForAdmin]);
+
+    const resolveQuotaTarget = React.useCallback((cityId: string, slotGroup: string) => {
+        const cityCfg = quotaSettings.byCityId?.[cityId];
+        if (slotGroup === "hero_exclusive") {
+            return Math.max(1, Number(cityCfg?.premiumHeroTarget ?? quotaSettings.defaults.premiumHeroTarget ?? 400));
+        }
+        return Math.max(1, Number(cityCfg?.proCarouselTarget ?? quotaSettings.defaults.proCarouselTarget ?? 250));
+    }, [quotaSettings]);
+
+    const loadQuotaSettings = React.useCallback(async () => {
+        try {
+            const snap = await getDoc(doc(db, "supportNetworkSettings", "adQuotaTargets"));
+            if (!snap.exists()) {
+                setQuotaSettings({
+                    defaults: { premiumHeroTarget: 400, proCarouselTarget: 250 },
+                    byCityId: {},
+                });
+                return;
+            }
+            const data = snap.data() as any;
+            setQuotaSettings({
+                defaults: {
+                    premiumHeroTarget: Math.max(1, Number(data?.defaults?.premiumHeroTarget ?? 400)),
+                    proCarouselTarget: Math.max(1, Number(data?.defaults?.proCarouselTarget ?? 250)),
+                },
+                byCityId: (data?.byCityId && typeof data.byCityId === "object") ? data.byCityId : {},
+            });
+        } catch (err) {
+            console.error("Falha ao carregar metas de cota:", err);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadQuotaSettings().catch(() => null);
+    }, [loadQuotaSettings]);
+
+    useEffect(() => {
+        if (!selectedQuotaCityId && availableCities.length > 0) {
+            setSelectedQuotaCityId(availableCities[0].cityId);
+        }
+    }, [availableCities, selectedQuotaCityId]);
+
+    useEffect(() => {
+        if (!selectedQuotaCityId) return;
+        const cityCfg = quotaSettings.byCityId?.[selectedQuotaCityId];
+        setQuotaPremiumValue(String(Math.max(1, Number(cityCfg?.premiumHeroTarget ?? quotaSettings.defaults.premiumHeroTarget ?? 400))));
+        setQuotaProValue(String(Math.max(1, Number(cityCfg?.proCarouselTarget ?? quotaSettings.defaults.proCarouselTarget ?? 250))));
+    }, [selectedQuotaCityId, quotaSettings]);
+
+    useEffect(() => {
+        setQuotaDefaultPremiumValue(String(Math.max(1, Number(quotaSettings.defaults.premiumHeroTarget ?? 400))));
+        setQuotaDefaultProValue(String(Math.max(1, Number(quotaSettings.defaults.proCarouselTarget ?? 250))));
+    }, [quotaSettings.defaults.premiumHeroTarget, quotaSettings.defaults.proCarouselTarget]);
+
+    const saveQuotaForCity = async () => {
+        if (!selectedQuotaCityId) return;
+        const premiumHeroTarget = Math.max(1, Number(quotaPremiumValue || "0"));
+        const proCarouselTarget = Math.max(1, Number(quotaProValue || "0"));
+        if (!Number.isFinite(premiumHeroTarget) || !Number.isFinite(proCarouselTarget)) {
+            alert("Metas inválidas. Informe números maiores que zero.");
+            return;
+        }
+        const cityInfo = availableCities.find((item) => item.cityId === selectedQuotaCityId);
+        const next = {
+            ...quotaSettings,
+            byCityId: {
+                ...quotaSettings.byCityId,
+                [selectedQuotaCityId]: {
+                    ...(quotaSettings.byCityId?.[selectedQuotaCityId] || {}),
+                    premiumHeroTarget,
+                    proCarouselTarget,
+                    cityName: cityInfo?.cityName || quotaSettings.byCityId?.[selectedQuotaCityId]?.cityName || "",
+                    uf: cityInfo?.uf || quotaSettings.byCityId?.[selectedQuotaCityId]?.uf || "",
+                },
+            },
+        };
+        setIsSavingQuota(true);
+        try {
+            await setDoc(
+                doc(db, "supportNetworkSettings", "adQuotaTargets"),
+                {
+                    defaults: next.defaults,
+                    byCityId: next.byCityId,
+                    updatedAt: serverTimestamp(),
+                    updatedByEmail: auth.currentUser?.email ?? null,
+                },
+                { merge: true }
+            );
+            setQuotaSettings(next);
+            alert("Metas da cidade salvas com sucesso.");
+        } catch (err) {
+            console.error("Falha ao salvar metas da cidade:", err);
+            alert("Não foi possível salvar as metas agora.");
+        } finally {
+            setIsSavingQuota(false);
+        }
+    };
+
+    const saveQuotaDefaults = async () => {
+        const premiumHeroTarget = Math.max(1, Number(quotaDefaultPremiumValue || "0"));
+        const proCarouselTarget = Math.max(1, Number(quotaDefaultProValue || "0"));
+        if (!Number.isFinite(premiumHeroTarget) || !Number.isFinite(proCarouselTarget)) {
+            alert("Metas padrão inválidas. Informe números maiores que zero.");
+            return;
+        }
+        const next = {
+            ...quotaSettings,
+            defaults: {
+                premiumHeroTarget,
+                proCarouselTarget,
+            },
+        };
+        setIsSavingQuota(true);
+        try {
+            await setDoc(
+                doc(db, "supportNetworkSettings", "adQuotaTargets"),
+                {
+                    defaults: next.defaults,
+                    byCityId: next.byCityId,
+                    updatedAt: serverTimestamp(),
+                    updatedByEmail: auth.currentUser?.email ?? null,
+                },
+                { merge: true }
+            );
+            setQuotaSettings(next);
+            alert("Metas padrão salvas com sucesso.");
+        } catch (err) {
+            console.error("Falha ao salvar metas padrão:", err);
+            alert("Não foi possível salvar as metas padrão agora.");
+        } finally {
+            setIsSavingQuota(false);
+        }
+    };
+
+    const exportPerformanceCsv = () => {
+        if (performanceRows.length === 0) {
+            alert("Sem dados para exportar.");
+            return;
+        }
+        const header = [
+            "date",
+            "city_filter",
+            "professional_id",
+            "professional_name",
+            "city_label",
+            "slot_group",
+            "impressions",
+            "target",
+            "saturation_percent",
+            "contact_clicks",
+            "whatsapp_clicks",
+            "total_contacts",
+            "ctr_percent",
+            "is_alert_80_plus",
+        ];
+        const lines = performanceRows.map((row) => [
+            performanceDate,
+            performanceCityId || "all",
+            row.professionalId,
+            row.professionalName,
+            row.cityLabel,
+            row.slotGroup,
+            row.impressions,
+            row.target,
+            row.saturationPercent.toFixed(2),
+            row.contactClicks,
+            row.whatsappClicks,
+            row.totalContacts,
+            row.ctrPercent.toFixed(2),
+            row.isAlert ? "yes" : "no",
+        ].map(escapeCsvValue).join(","));
+        const csv = [header.join(","), ...lines].join("\n");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `dashboard-cotas-${performanceDate}-${performanceCityId || "all"}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    };
+
+    const refreshPerformanceDashboard = async () => {
+        setIsLoadingPerformance(true);
+        try {
+            const dailyQ = query(
+                collection(db, "supportNetworkDailyStats"),
+                where("date", "==", performanceDate),
+                limit(3000)
+            );
+            const snap = await getDocs(dailyQ);
+            const aggregate = new Map<string, {
+                professionalId: string;
+                cityId: string;
+                slotGroup: string;
+                impressions: number;
+                contactClicks: number;
+                whatsappClicks: number;
+            }>();
+
+            snap.docs.forEach((docSnap) => {
+                const data = docSnap.data() as any;
+                const cityId = String(data?.cityId || "");
+                if (performanceCityId && cityId !== performanceCityId) return;
+                const professionalId = String(data?.professionalId || "");
+                const slotGroup = String(data?.slotGroup || "");
+                if (!professionalId) return;
+                if (slotGroup !== "hero_exclusive" && slotGroup !== "pro_carousel") return;
+                const key = `${professionalId}::${cityId || "global"}::${slotGroup}`;
+                const current = aggregate.get(key) || {
+                    professionalId,
+                    cityId,
+                    slotGroup,
+                    impressions: 0,
+                    contactClicks: 0,
+                    whatsappClicks: 0,
+                };
+                current.impressions += Number(data?.impressions || 0);
+                current.contactClicks += Number(data?.contactClicks || 0);
+                current.whatsappClicks += Number(data?.whatsappClicks || 0);
+                aggregate.set(key, current);
+            });
+
+            const rows = Array.from(aggregate.values()).map((item) => {
+                const professional = professionalsById.get(item.professionalId);
+                const cityLabel = professional ? `${professional.city}/${professional.uf}` : (item.cityId || "Global");
+                const totalContacts = item.contactClicks + item.whatsappClicks;
+                const ctrPercent = item.impressions > 0 ? (totalContacts / item.impressions) * 100 : 0;
+                const target = resolveQuotaTarget(item.cityId, item.slotGroup);
+                const saturationPercent = item.impressions > 0 ? (item.impressions / target) * 100 : 0;
+                return {
+                    professionalId: item.professionalId,
+                    professionalName: professional?.name || item.professionalId,
+                    cityId: item.cityId,
+                    cityLabel,
+                    slotGroup: item.slotGroup,
+                    impressions: item.impressions,
+                    contactClicks: item.contactClicks,
+                    whatsappClicks: item.whatsappClicks,
+                    totalContacts,
+                    ctrPercent,
+                    target,
+                    saturationPercent,
+                    isAlert: saturationPercent >= 80,
+                };
+            }).sort((a, b) => b.saturationPercent - a.saturationPercent || b.impressions - a.impressions);
+            setPerformanceRows(rows);
+        } catch (err) {
+            console.error("Falha ao atualizar dashboard de cotas:", err);
+            alert("Não foi possível carregar o dashboard agora.");
+        } finally {
+            setIsLoadingPerformance(false);
+        }
+    };
+
+    const refreshPerformanceTrend = async () => {
+        setIsLoadingPerformance(true);
+        try {
+            const baseDate = new Date(`${performanceDate}T00:00:00`);
+            const dates = Array.from({ length: performanceWindowDays }, (_, index) => {
+                const d = new Date(baseDate);
+                d.setDate(baseDate.getDate() - (performanceWindowDays - 1 - index));
+                return formatDateIso(d);
+            });
+            const rows: Array<{
+                date: string;
+                impressions: number;
+                totalContacts: number;
+                ctrPercent: number;
+            }> = [];
+
+            for (const date of dates) {
+                const dailyQ = query(
+                    collection(db, "supportNetworkDailyStats"),
+                    where("date", "==", date),
+                    limit(3000)
+                );
+                const snap = await getDocs(dailyQ);
+                let impressions = 0;
+                let totalContacts = 0;
+                snap.docs.forEach((docSnap) => {
+                    const data = docSnap.data() as any;
+                    const cityId = String(data?.cityId || "");
+                    if (performanceCityId && cityId !== performanceCityId) return;
+                    const slotGroup = String(data?.slotGroup || "");
+                    if (slotGroup !== "hero_exclusive" && slotGroup !== "pro_carousel") return;
+                    impressions += Number(data?.impressions || 0);
+                    totalContacts += Number(data?.contactClicks || 0) + Number(data?.whatsappClicks || 0);
+                });
+                const ctrPercent = impressions > 0 ? (totalContacts / impressions) * 100 : 0;
+                rows.push({ date, impressions, totalContacts, ctrPercent });
+            }
+
+            setPerformanceTrendRows(rows);
+        } catch (err) {
+            console.error("Falha ao carregar tendência:", err);
+            alert("Não foi possível carregar o histórico de tendência agora.");
+        } finally {
+            setIsLoadingPerformance(false);
+        }
+    };
 
     const getStatusLabel = (prof: Professional) => {
         const todayStart = new Date(todayStr + "T00:00:00");
@@ -341,6 +742,29 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
         }
     };
 
+    const handleSyncSpecialtyCatalogDefaults = async () => {
+        if (!window.confirm("Sincronizar agora o catalogo padrao de grandes areas e especialidades?")) return;
+        setIsSyncingCatalog(true);
+        try {
+            await setDoc(
+                doc(db, "supportNetworkSettings", "specialtyCatalog"),
+                {
+                    areas: SUPPORT_NETWORK_AREAS,
+                    specialtiesByArea: SUPPORT_NETWORK_SPECIALTIES_BY_AREA,
+                    updatedAt: serverTimestamp(),
+                    updatedByEmail: currentUserEmail || null,
+                },
+                { merge: true }
+            );
+            alert("Catalogo de especialidades sincronizado com sucesso.");
+        } catch (err) {
+            console.error("Falha ao sincronizar catalogo:", err);
+            alert("Nao foi possivel sincronizar o catalogo agora.");
+        } finally {
+            setIsSyncingCatalog(false);
+        }
+    };
+
     const handleUploadClick = () => {
         fileInputRef.current?.click();
     };
@@ -389,7 +813,7 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
     return (
         <div className={embedded ? "w-full" : "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"}>
             <div
-                className={`bg-white rounded-lg shadow-xl p-6 w-full max-w-4xl m-4 flex flex-col ${embedded ? "mx-auto my-0" : ""}`}
+                className={`bg-white rounded-lg shadow-xl p-6 w-full max-w-4xl m-4 flex flex-col overflow-y-auto ${embedded ? "mx-auto my-0" : ""}`}
                 style={{ maxHeight: embedded ? 'calc(100vh - 140px)' : '90vh' }}
             >
                 <div className="flex justify-between items-center mb-4">
@@ -407,15 +831,24 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                         }}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
                     >
-                        Sincronizar nuvem
+                        Puxar da nuvem
                     </button>
-                    <button onClick={handleBackup} className="px-4 py-2 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700">Backup</button>
+                    <button onClick={handleBackup} className="px-4 py-2 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700">Exportar backup (.json)</button>
                     {(!isManager || isAdminEmail) && (
-                        <button onClick={handlePublishToCloud} className="px-4 py-2 bg-purple-600 text-white rounded-lg font-semibold">Publicar na nuvem</button>
+                        <button
+                            onClick={() => { void handleSyncSpecialtyCatalogDefaults(); }}
+                            disabled={isSyncingCatalog}
+                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold disabled:opacity-60"
+                        >
+                            {isSyncingCatalog ? "Sincronizando catalogo..." : "Sincronizar catalogo de especialidades"}
+                        </button>
+                    )}
+                    {(!isManager || isAdminEmail) && (
+                        <button onClick={handlePublishToCloud} className="px-4 py-2 bg-purple-600 text-white rounded-lg font-semibold">Enviar para nuvem</button>
                     )}
                     {(!isManager || isAdminEmail) && (
                         <>
-                            <button onClick={handleUploadClick} className="px-4 py-2 bg-orange-500 text-white rounded-lg font-semibold">Upload de arquivo</button>
+                            <button onClick={handleUploadClick} className="px-4 py-2 bg-orange-500 text-white rounded-lg font-semibold">Importar backup (.json)</button>
                             <input
                                 ref={fileInputRef}
                                 type="file"
@@ -447,11 +880,248 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                         className="p-2 border rounded bg-white"
                     >
                         <option value="">Filtrar por Categoria (todas)</option>
+                        <option value="free">FREE</option>
                         <option value="master">MASTER</option>
                         <option value="top">PRO</option>
                         <option value="exclusive">PREMIUM</option>
                         <option value="verified">LISTA VIP</option>
                     </select>
+                </div>
+                {(!isManager || isAdminEmail) && (
+                    <div className="mb-4 rounded-lg border border-purple-200 bg-purple-50/40 p-3 space-y-3">
+                        <h3 className="text-sm font-bold text-purple-800">Metas de cota diária por cidade</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                            <input
+                                type="number"
+                                min={1}
+                                value={quotaDefaultPremiumValue}
+                                onChange={(e) => setQuotaDefaultPremiumValue(e.target.value)}
+                                className="p-2 border rounded bg-white"
+                                placeholder="Padrão PREMIUM hero"
+                            />
+                            <input
+                                type="number"
+                                min={1}
+                                value={quotaDefaultProValue}
+                                onChange={(e) => setQuotaDefaultProValue(e.target.value)}
+                                className="p-2 border rounded bg-white"
+                                placeholder="Padrão PRO carrossel"
+                            />
+                            <div className="md:col-span-2 flex md:justify-end">
+                                <button
+                                    type="button"
+                                    onClick={saveQuotaDefaults}
+                                    disabled={isSavingQuota}
+                                    className="px-3 py-2 bg-purple-700 text-white rounded-lg text-sm font-semibold disabled:opacity-60"
+                                >
+                                    {isSavingQuota ? "Salvando..." : "Salvar metas padrão"}
+                                </button>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                            <select
+                                value={selectedQuotaCityId}
+                                onChange={(e) => setSelectedQuotaCityId(e.target.value)}
+                                className="p-2 border rounded bg-white md:col-span-2"
+                            >
+                                {availableCities.length === 0 && <option value="">Sem cidades</option>}
+                                {availableCities.map((city) => (
+                                    <option key={`quota-city-${city.cityId}`} value={city.cityId}>
+                                        {city.cityName}/{city.uf} ({city.cityId})
+                                    </option>
+                                ))}
+                            </select>
+                            <input
+                                type="number"
+                                min={1}
+                                value={quotaPremiumValue}
+                                onChange={(e) => setQuotaPremiumValue(e.target.value)}
+                                className="p-2 border rounded bg-white"
+                                placeholder="Meta PREMIUM hero"
+                            />
+                            <input
+                                type="number"
+                                min={1}
+                                value={quotaProValue}
+                                onChange={(e) => setQuotaProValue(e.target.value)}
+                                className="p-2 border rounded bg-white"
+                                placeholder="Meta PRO carrossel"
+                            />
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs text-purple-800">
+                                Padrão atual: PREMIUM {quotaSettings.defaults.premiumHeroTarget}/dia • PRO {quotaSettings.defaults.proCarouselTarget}/dia.
+                                Metas por cidade sobrescrevem o padrão.
+                            </p>
+                            <button
+                                type="button"
+                                onClick={saveQuotaForCity}
+                                disabled={isSavingQuota || !selectedQuotaCityId}
+                                className="px-3 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold disabled:opacity-60"
+                            >
+                                {isSavingQuota ? "Salvando..." : "Salvar metas da cidade"}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50/30 p-3 space-y-3">
+                    <h3 className="text-sm font-bold text-blue-800">Dashboard diário de cotas e performance</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-2">
+                        <input
+                            type="date"
+                            value={performanceDate}
+                            onChange={(e) => setPerformanceDate(e.target.value)}
+                            className="p-2 border rounded bg-white"
+                        />
+                        <select
+                            value={performanceCityId}
+                            onChange={(e) => setPerformanceCityId(e.target.value)}
+                            className="p-2 border rounded bg-white md:col-span-2"
+                        >
+                            <option value="">Todas as cidades</option>
+                            {availableCities.map((city) => (
+                                <option key={`perf-city-${city.cityId}`} value={city.cityId}>
+                                    {city.cityName}/{city.uf}
+                                </option>
+                            ))}
+                        </select>
+                        <select
+                            value={String(performanceWindowDays)}
+                            onChange={(e) => setPerformanceWindowDays((Number(e.target.value) === 30 ? 30 : 7))}
+                            className="p-2 border rounded bg-white"
+                        >
+                            <option value="7">Histórico 7 dias</option>
+                            <option value="30">Histórico 30 dias</option>
+                        </select>
+                        <button
+                            type="button"
+                            onClick={() => { void refreshPerformanceDashboard(); void refreshPerformanceTrend(); }}
+                            disabled={isLoadingPerformance}
+                            className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold disabled:opacity-60"
+                        >
+                            {isLoadingPerformance ? "Carregando..." : "Atualizar dashboard"}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={exportPerformanceCsv}
+                            disabled={isLoadingPerformance || performanceRows.length === 0}
+                            className="px-3 py-2 bg-white border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold disabled:opacity-60"
+                        >
+                            Exportar CSV
+                        </button>
+                    </div>
+                    {performanceRows.length > 0 && (
+                        <>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                                <div className="bg-white border border-blue-100 rounded-lg p-2">
+                                    <div className="text-blue-700 font-semibold">Profissionais com alerta (&gt;=80%)</div>
+                                    <div className="text-lg font-bold text-blue-900">{performanceRows.filter((row) => row.isAlert).length}</div>
+                                </div>
+                                <div className="bg-white border border-blue-100 rounded-lg p-2">
+                                    <div className="text-blue-700 font-semibold">Impressões totais no dia</div>
+                                    <div className="text-lg font-bold text-blue-900">{performanceRows.reduce((acc, row) => acc + row.impressions, 0)}</div>
+                                </div>
+                                <div className="bg-white border border-blue-100 rounded-lg p-2">
+                                    <div className="text-blue-700 font-semibold">CTR contato médio</div>
+                                    <div className="text-lg font-bold text-blue-900">
+                                        {(
+                                            (performanceRows.reduce((acc, row) => acc + row.totalContacts, 0) /
+                                                Math.max(1, performanceRows.reduce((acc, row) => acc + row.impressions, 0))) * 100
+                                        ).toFixed(2)}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="max-h-60 overflow-y-auto border rounded-lg bg-white">
+                                <table className="w-full text-left text-xs">
+                                    <thead className="sticky top-0 bg-blue-50">
+                                        <tr>
+                                            <th className="p-2">Profissional</th>
+                                            <th className="p-2">Cidade</th>
+                                            <th className="p-2">Slot</th>
+                                            <th className="p-2">Impressões</th>
+                                            <th className="p-2">Meta</th>
+                                            <th className="p-2">% Cota</th>
+                                            <th className="p-2">CTR contato</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {performanceRows.map((row) => (
+                                            <tr key={`${row.professionalId}-${row.cityId}-${row.slotGroup}`} className="border-t">
+                                                <td className="p-2 font-semibold">{row.professionalName}</td>
+                                                <td className="p-2">{row.cityLabel}</td>
+                                                <td className="p-2">{row.slotGroup === "hero_exclusive" ? "PREMIUM hero" : "PRO carrossel"}</td>
+                                                <td className="p-2">{row.impressions}</td>
+                                                <td className="p-2">{row.target}</td>
+                                                <td className={`p-2 font-bold ${row.isAlert ? "text-amber-700" : "text-gray-700"}`}>
+                                                    {row.saturationPercent.toFixed(1)}%
+                                                </td>
+                                                <td className="p-2">{row.ctrPercent.toFixed(2)}%</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {performanceRows.some((row) => row.isAlert) && (
+                                <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                                    <div className="font-bold mb-1">Alertas de saturação (&gt;=80%)</div>
+                                    <ul className="space-y-1">
+                                        {performanceRows
+                                            .filter((row) => row.isAlert)
+                                            .slice(0, 8)
+                                            .map((row) => (
+                                                <li key={`alert-${row.professionalId}-${row.slotGroup}`}>
+                                                    {row.professionalName} • {row.slotGroup === "hero_exclusive" ? "PREMIUM hero" : "PRO carrossel"} • {row.saturationPercent.toFixed(1)}%
+                                                </li>
+                                            ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </>
+                    )}
+                    {performanceTrendRows.length > 0 && (
+                        <div className="rounded-lg border border-blue-200 bg-white p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                                <div className="text-xs font-bold text-blue-800">Tendência de CTR ({performanceWindowDays} dias)</div>
+                                <div className="text-[11px] text-blue-700">
+                                    {(() => {
+                                        const first = performanceTrendRows[0]?.ctrPercent ?? 0;
+                                        const last = performanceTrendRows[performanceTrendRows.length - 1]?.ctrPercent ?? 0;
+                                        const delta = last - first;
+                                        const signal = delta > 0.05 ? "alta" : delta < -0.05 ? "queda" : "estável";
+                                        return `Início ${first.toFixed(2)}% • Fim ${last.toFixed(2)}% • Tendência ${signal}`;
+                                    })()}
+                                </div>
+                            </div>
+                            <div className="max-h-44 overflow-y-auto border rounded-lg">
+                                <table className="w-full text-left text-xs">
+                                    <thead className="sticky top-0 bg-blue-50">
+                                        <tr>
+                                            <th className="p-2">Data</th>
+                                            <th className="p-2">Impressões</th>
+                                            <th className="p-2">Contatos</th>
+                                            <th className="p-2">CTR</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {performanceTrendRows.map((row) => (
+                                            <tr key={`trend-${row.date}`} className="border-t">
+                                                <td className="p-2">{row.date}</td>
+                                                <td className="p-2">{row.impressions}</td>
+                                                <td className="p-2">{row.totalContacts}</td>
+                                                <td className="p-2 font-semibold">{row.ctrPercent.toFixed(2)}%</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                    {performanceRows.length === 0 && !isLoadingPerformance && (
+                        <p className="text-xs text-blue-800">
+                            Sem dados para o filtro atual. Clique em "Atualizar dashboard". Se estiver filtrando por cidade, tente "Todas as cidades".
+                        </p>
+                    )}
                 </div>
 
                 {(() => {
@@ -474,7 +1144,7 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                     );
                 })()}
                 
-                <div className="flex-grow overflow-y-auto pr-2">
+                <div className="pr-2">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-gray-50 sticky top-0">
                             <tr><th className="p-2">Nome</th><th>Cidade/UF</th><th>Especialidades</th><th>Categoria</th><th>Status</th><th>Ações</th></tr>
@@ -491,7 +1161,7 @@ const ManageSupportNetworkModal: React.FC<ManageSupportNetworkModalProps> = ({ o
                                 <tr key={prof.id} className="border-b hover:bg-gray-50">
                                     <td className="p-2 font-medium">{prof.name}</td>
                                     <td>{prof.city}/{prof.uf}</td>
-                                    <td>{(prof.specialties || []).join(", ") || prof.specialty}</td>
+                                    <td>{(Array.isArray(prof.specialties) ? prof.specialties : (prof.specialty ? [prof.specialty] : [])).join(", ") || "-"}</td>
                                     <td>
                                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                                             prof.tier === 'master' ? 'bg-purple-100 text-purple-700' :
@@ -585,6 +1255,9 @@ const ProfessionalReportModal: React.FC<ProfessionalReportModalProps> = ({ profe
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState<Record<string, number>>({});
     const [events, setEvents] = useState<Array<{ eventType: string; userEmail?: string | null; createdAt?: any }>>([]);
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const [fromDate, setFromDate] = useState(todayIso);
+    const [toDate, setToDate] = useState(todayIso);
 
     useEffect(() => {
         let cancelled = false;
@@ -633,9 +1306,20 @@ const ProfessionalReportModal: React.FC<ProfessionalReportModalProps> = ({ profe
         if (type === "contact_click") return "Clique Contato";
         if (type === "location_click") return "Clique Localização";
         if (type === "favorite_add") return "Novo Favorito";
-        if (type === "routine_import") return "Clique em Rotinas Personalizadas";
+        if (type === "routine_import") return "Clique em Conteúdo Personalizado";
         return type;
     };
+
+    const filteredEvents = useMemo(() => {
+        const fromMs = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : Number.NEGATIVE_INFINITY;
+        const toMs = toDate ? new Date(`${toDate}T23:59:59.999`).getTime() : Number.POSITIVE_INFINITY;
+        return events.filter((evt) => {
+            const dt = evt.createdAt?.toDate ? evt.createdAt.toDate() : null;
+            const ms = dt ? dt.getTime() : null;
+            if (ms === null) return false;
+            return ms >= fromMs && ms <= toMs;
+        });
+    }, [events, fromDate, toDate]);
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
@@ -653,15 +1337,49 @@ const ProfessionalReportModal: React.FC<ProfessionalReportModalProps> = ({ profe
                             <div className="bg-cyan-50 rounded-lg p-3"><div className="text-[11px] text-gray-500">Contato</div><div className="text-lg font-bold">{stats.contactClicks || 0}</div></div>
                             <div className="bg-blue-50 rounded-lg p-3"><div className="text-[11px] text-gray-500">Localização</div><div className="text-lg font-bold">{stats.locationClicks || 0}</div></div>
                             <div className="bg-pink-50 rounded-lg p-3"><div className="text-[11px] text-gray-500">Favoritos</div><div className="text-lg font-bold">{stats.favoriteAdds || 0}</div></div>
-                            <div className="bg-purple-50 rounded-lg p-3"><div className="text-[11px] text-gray-500">Rotinas</div><div className="text-lg font-bold">{stats.routineImportClicks || 0}</div></div>
+                            <div className="bg-purple-50 rounded-lg p-3"><div className="text-[11px] text-gray-500">Conteúdo personalizado</div><div className="text-lg font-bold">{stats.routineImportClicks || 0}</div></div>
                         </div>
                         <div>
-                            <h4 className="font-semibold mb-2">Últimos eventos</h4>
-                            {events.length === 0 ? (
+                            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 mb-2">
+                                <h4 className="font-semibold">Últimos eventos</h4>
+                                <div className="flex items-end gap-2 text-xs">
+                                    <label className="flex flex-col">
+                                        <span className="text-gray-500">De</span>
+                                        <input
+                                            type="date"
+                                            value={fromDate}
+                                            max={toDate || undefined}
+                                            onChange={(e) => setFromDate(e.target.value)}
+                                            className="p-1.5 border rounded"
+                                        />
+                                    </label>
+                                    <label className="flex flex-col">
+                                        <span className="text-gray-500">Até</span>
+                                        <input
+                                            type="date"
+                                            value={toDate}
+                                            min={fromDate || undefined}
+                                            onChange={(e) => setToDate(e.target.value)}
+                                            className="p-1.5 border rounded"
+                                        />
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setFromDate(todayIso);
+                                            setToDate(todayIso);
+                                        }}
+                                        className="px-2 py-1.5 rounded border border-gray-300 text-gray-700 font-semibold"
+                                    >
+                                        Hoje
+                                    </button>
+                                </div>
+                            </div>
+                            {filteredEvents.length === 0 ? (
                                 <p className="text-sm text-gray-500">Sem eventos ainda.</p>
                             ) : (
                                 <ul className="space-y-1 text-sm">
-                                    {events.slice(0, 20).map((evt, idx) => {
+                                    {filteredEvents.slice(0, 50).map((evt, idx) => {
                                         const dt = evt.createdAt?.toDate ? evt.createdAt.toDate() : null;
                                         return (
                                             <li key={`${evt.eventType}-${idx}`} className="flex items-center justify-between border-b py-1">
@@ -691,6 +1409,11 @@ interface ProfessionalFormProps {
 const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClose, onRequestBackup, managerProfile, isManager }) => {
     const { addProfessional, updateProfessional, deleteProfessional, supportNetworkProfessionals, supportNetworkPricing } = useAppContext();
     const isEditing = !!professional;
+    const splitOtherSpecialties = (value: string) =>
+        value
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
     
     const emptyState: Partial<Professional> = {
         contacts: {},
@@ -709,22 +1432,27 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         paymentStatus: "pending",
     };
 
-    const [formState, setFormState] = useState<Partial<Professional>>(
-        professional
-            ? { ...professional, specialties: professional.specialties || (professional.specialty ? [professional.specialty] : []) }
-            : emptyState
-    );
+    const [formState, setFormState] = useState<Partial<Professional>>(() => {
+        if (!professional) return emptyState;
+        const baseSpecialties = professional.specialties || (professional.specialty ? [professional.specialty] : []);
+        const predefined = baseSpecialties.filter((s) => SPECIALTIES.includes(s));
+        return { ...professional, specialties: predefined };
+    });
     const [keywordText, setKeywordText] = useState("");
     const [highlightsText, setHighlightsText] = useState("");
-    const [exclusiveRoutinesText, setExclusiveRoutinesText] = useState("");
     const [otherSpecialtiesText, setOtherSpecialtiesText] = useState("");
     const [otherLinksText, setOtherLinksText] = useState("");
     const [states, setStates] = useState<UF[]>([]);
     const [cities, setCities] = useState<Municipio[]>([]);
+    const panelAccessCode = professional?.id ? buildProfessionalConnectCode(professional.id) : "";
+    const panelAccessLink = typeof window !== "undefined" ? `${window.location.origin}/professional` : "/professional";
     const [isUploading, setIsUploading] = useState(false);
+    const [isPhotoUploading, setIsPhotoUploading] = useState(false);
     const [uploadError, setUploadError] = useState<string | null>(null);
     const [masterMonth, setMasterMonth] = useState(() => new Date().toISOString().slice(0, 7));
     const todayStr = new Date().toISOString().slice(0, 10);
+    const photoUploadTaskRef = useRef<ReturnType<typeof uploadBytesResumable> | null>(null);
+    const videoUploadTaskRef = useRef<ReturnType<typeof uploadBytesResumable> | null>(null);
 
     const resolvePricing = (tier?: string, billing?: string) => {
         if (!tier || !billing) return undefined;
@@ -732,34 +1460,41 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         if (!plan) return undefined;
         return billing === "annual" ? plan.annual : plan.monthly;
     };
-    
     useEffect(() => { getStates().then(setStates); }, []);
     useEffect(() => {
         if (professional) {
             const baseSpecialties = professional.specialties || (professional.specialty ? [professional.specialty] : []);
-            setFormState({ ...professional, specialties: baseSpecialties });
+            const predefined = baseSpecialties.filter((s) => SPECIALTIES.includes(s));
+            setFormState({ ...professional, specialties: predefined });
             setKeywordText((professional.spotlightKeywords || []).join(", "));
             setHighlightsText((professional.highlights || []).join(", "));
-            setExclusiveRoutinesText(
-                (professional.exclusiveRoutines || [])
-                    .map((routine) => `${routine.name} | ${routine.diamonds}`)
-                    .join("\n")
-            );
             const other = baseSpecialties.filter((s) => !SPECIALTIES.includes(s));
             setOtherSpecialtiesText(other.join(", "));
             setOtherLinksText((professional.contacts?.otherLinks || []).join("\n"));
-        } else {
-            setFormState({
-                ...emptyState,
-                uf: managerProfile?.uf || "",
-            });
-            setKeywordText("");
-            setHighlightsText("");
-            setExclusiveRoutinesText("");
-            setOtherSpecialtiesText("");
-            setOtherLinksText("");
+            return;
         }
+
+        setFormState({
+            ...emptyState,
+            uf: managerProfile?.uf || "",
+        });
+        setKeywordText("");
+        setHighlightsText("");
+        setOtherSpecialtiesText("");
+        setOtherLinksText("");
+    }, [professional?.id]);
+
+    useEffect(() => {
+        if (professional) return;
+        setFormState((prev) => ({ ...prev, uf: managerProfile?.uf || "" }));
     }, [professional, managerProfile?.uf]);
+
+    useEffect(() => {
+        return () => {
+            try { photoUploadTaskRef.current?.cancel(); } catch {}
+            try { videoUploadTaskRef.current?.cancel(); } catch {}
+        };
+    }, []);
 
     useEffect(() => {
         if (!formState.bookingMessage) {
@@ -860,41 +1595,82 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         });
     };
 
-    const uploadImage = async (file: File, path: string) => {
+    const uploadImage = async (
+        file: File,
+        path: string,
+        timeoutMs: number,
+        taskRef: React.MutableRefObject<ReturnType<typeof uploadBytesResumable> | null>
+    ) => {
         const fileRef = ref(storage, path);
-        await uploadBytes(fileRef, file, { contentType: file.type });
-        return getDownloadURL(fileRef);
+        return new Promise<string>((resolve, reject) => {
+            if (taskRef.current) {
+                try {
+                    taskRef.current.cancel();
+                } catch {}
+            }
+            const task = uploadBytesResumable(fileRef, file, { contentType: file.type });
+            taskRef.current = task;
+            const timeoutId = window.setTimeout(() => {
+                task.cancel();
+                reject(new Error("Upload demorou demais e foi cancelado. Tente novamente."));
+            }, timeoutMs);
+
+            task.on(
+                "state_changed",
+                () => {},
+                (error) => {
+                    window.clearTimeout(timeoutId);
+                    if (taskRef.current === task) taskRef.current = null;
+                    reject(error);
+                },
+                async () => {
+                    try {
+                        const url = await getDownloadURL(task.snapshot.ref);
+                        window.clearTimeout(timeoutId);
+                        if (taskRef.current === task) taskRef.current = null;
+                        resolve(url);
+                    } catch (error) {
+                        window.clearTimeout(timeoutId);
+                        if (taskRef.current === task) taskRef.current = null;
+                        reject(error);
+                    }
+                }
+            );
+        });
     };
 
-    const handleProfileUpload = async (file: File) => {
+    const handleProfilePhotoUpload = async (file: File) => {
         setUploadError(null);
         if (!file) return;
-        const allowed = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!allowed.includes(file.type)) {
-            setUploadError('Formato inválido. Use JPG, PNG ou WebP.');
+        if (!file.type.startsWith("image/")) {
+            setUploadError("Formato inválido. Envie uma imagem.");
             return;
         }
         if (file.size > PROFILE_IMAGE_MAX_BYTES) {
-            setUploadError(`Arquivo grande demais. Máximo ${formatBytes(PROFILE_IMAGE_MAX_BYTES)}.`);
+            setUploadError(`Imagem grande demais. Máximo ${formatBytes(PROFILE_IMAGE_MAX_BYTES)}.`);
             return;
         }
+
         try {
-            setIsUploading(true);
+            setIsPhotoUploading(true);
             const { width, height } = await getImageDimensions(file);
-            const isAllowedSize = PROFILE_IMAGE_ALLOWED_SIZES.some(
-                (size) => width === size.width && height === size.height
-            );
-            if (!isAllowedSize) {
-                setUploadError("A foto de perfil precisa ter 400x400px ou 600x600px.");
+            if (width !== PROFILE_IMAGE_WIDTH || height !== PROFILE_IMAGE_HEIGHT) {
+                setUploadError(`A imagem precisa ter ${PROFILE_IMAGE_WIDTH}x${PROFILE_IMAGE_HEIGHT}px.`);
                 return;
             }
             const id = professional?.id || crypto.randomUUID();
-            const url = await uploadImage(file, `support-network/profiles/${id}-${Date.now()}`);
-            setFormState(p => ({ ...p, photoUrl: url }));
+            const extension = file.name.includes(".")
+                ? file.name.slice(file.name.lastIndexOf(".")).toLowerCase()
+                : ".jpg";
+            const path = `support-network/profiles/${id}-${Date.now()}${extension}`;
+            const fileRef = ref(storage, path);
+            await uploadBytes(fileRef, file, { contentType: file.type });
+            const url = await getDownloadURL(fileRef);
+            setFormState((p) => ({ ...p, photoUrl: url }));
         } catch (err) {
-            setUploadError('Falha ao enviar a foto.');
+            setUploadError(getUploadErrorMessage(err, "Falha ao enviar a foto."));
         } finally {
-            setIsUploading(false);
+            setIsPhotoUploading(false);
         }
     };
 
@@ -921,10 +1697,15 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                 return;
             }
             const id = professional?.id || crypto.randomUUID();
-            const url = await uploadImage(file, `support-network/videos/${id}-${Date.now()}.mp4`);
+            const url = await uploadImage(
+                file,
+                `support-network/videos/${id}-${Date.now()}.mp4`,
+                VIDEO_UPLOAD_TIMEOUT_MS,
+                videoUploadTaskRef
+            );
             setFormState(p => ({ ...p, videoUrl: url }));
         } catch (err) {
-            setUploadError("Falha ao enviar o vídeo.");
+            setUploadError(getUploadErrorMessage(err, "Falha ao enviar o vídeo."));
         } finally {
             setIsUploading(false);
         }
@@ -975,7 +1756,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
             if (!managerProfile.cityIds.includes(String(formState.cityId))) return alert("Cidade fora da sua área.");
         }
         
-        if (isUploading) return alert("Aguarde o upload terminar.");
+        if (isUploading || isPhotoUploading) return alert("Aguarde o upload terminar.");
         if (!formState.personType) return alert("Selecione o tipo de pessoa.");
         if (!formState.name?.trim()) return alert("Informe o nome.");
         if (formState.personType === "pf" && !formState.cpf?.trim()) return alert("Informe o CPF.");
@@ -992,7 +1773,10 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         if (!formState.contacts?.responsiblePhone?.trim()) return alert("Informe o telefone do responsável pelo anúncio.");
         if (!formState.contacts?.phone?.trim()) return alert("Informe o telefone do estabelecimento.");
         if (!formState.contacts?.whatsapp?.trim()) return alert("Informe o WhatsApp do estabelecimento.");
-        if (!formState.contacts?.email?.trim()) return alert("Informe o e-mail principal.");
+        const requiresPanelEmail = isProfessionalPanelTier(formState.tier);
+        if (!formState.contacts?.email?.trim() && requiresPanelEmail) {
+            return alert(`Para ${getTierLabel(formState.tier)}, informe o e-mail de acesso ao painel profissional.`);
+        }
 
         if (!formState.validFrom || !formState.validTo) return alert("Informe o período de validade.");
         if (formState.validFrom < todayStr) return alert("A data de início não pode ser retroativa.");
@@ -1019,10 +1803,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
         }
 
         const baseSpecialties = formState.specialties || [];
-        const otherSpecialties = otherSpecialtiesText
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean);
+        const otherSpecialties = splitOtherSpecialties(otherSpecialtiesText);
         if (otherSpecialties.length > MAX_OTHER_SPECIALTIES) {
             return alert(`Você pode adicionar no máximo ${MAX_OTHER_SPECIALTIES} especialidades em "Outras".`);
         }
@@ -1039,33 +1820,6 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
             .map((h) => h.trim())
             .filter(Boolean);
 
-        const exclusiveRoutines: ExclusiveRoutineTemplate[] = exclusiveRoutinesText
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .map((line, idx) => {
-                const [nameRaw, diamondsRaw] = line.split("|").map((item) => item?.trim() || "");
-                const diamonds = Number(diamondsRaw || "0");
-                return {
-                    id: `routine-${idx + 1}`,
-                    name: nameRaw,
-                    diamonds: Number.isNaN(diamonds) ? 0 : diamonds,
-                };
-            })
-            .filter((item) => item.name.length > 0);
-
-        if (formState.tier === "exclusive") {
-            if (exclusiveRoutines.length === 0) {
-                return alert("Informe pelo menos 1 rotina personalizada para o Premium.");
-            }
-            if (exclusiveRoutines.length > 10) {
-                return alert("O Premium pode ter no máximo 10 rotinas personalizadas.");
-            }
-            if (exclusiveRoutines.some((item) => item.diamonds <= 0)) {
-                return alert("Cada rotina personalizada deve ter diamantes maiores que zero.");
-            }
-        }
-
         if (formState.tier === "exclusive" && spotlightKeywords.length === 0) {
             return alert("Informe palavras-chave para o Premium.");
         }
@@ -1074,14 +1828,32 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
             ...formState,
             city: cityObj.nome,
             galleryUrls: [],
+            photoUrl: formState.photoUrl.trim(),
             specialties,
             specialty: specialties[0],
             highlights,
             spotlightKeywords,
             spotlightDailyLimit: formState.spotlightDailyLimit || 2,
             paymentPrice: formState.paymentPrice ? Number(formState.paymentPrice) : undefined,
-            exclusiveRoutines: formState.tier === "exclusive" ? exclusiveRoutines : [],
+            plan_type: mapTierToPlanType(formState.tier),
         } as Professional;
+        const planConfig = PROFESSIONAL_PLAN_CONFIG[data.plan_type || "FREE"];
+        data.ia_habilitada = planConfig.aiEnabled;
+        if (typeof data.horas_transcricao_restantes !== "number") {
+            data.horas_transcricao_restantes = planConfig.voiceHours * 3600;
+        }
+        if (typeof data.total_pacientes_vinculados !== "number") {
+            data.total_pacientes_vinculados = 0;
+        }
+        if (typeof data.pacientes_mes_atual !== "number") {
+            data.pacientes_mes_atual = 0;
+        }
+        if (!data.limite_mes_referencia) {
+            data.limite_mes_referencia = new Date().toISOString().slice(0, 7);
+        }
+        if (typeof data.status_bloqueio !== "boolean") {
+            data.status_bloqueio = false;
+        }
         
         // Regras de Unicidade
         if (data.tier === 'master') {
@@ -1148,8 +1920,11 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                                 name="cpf"
                                 value={formState.cpf || ''}
                                 onChange={(e) => setFormState(p => ({ ...p, cpf: formatCpf(e.target.value) }))}
-                                placeholder="CPF"
+                                placeholder="CPF (000.000.000-00)"
+                                type="tel"
                                 inputMode="numeric"
+                                maxLength={14}
+                                pattern="\d{3}\.\d{3}\.\d{3}-\d{2}"
                                 className="p-2 border rounded"
                             />
                         )}
@@ -1214,7 +1989,42 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                             inputMode="numeric"
                             className="p-2 border rounded"
                         />
-                        <input name="contacts.email" value={formState.contacts?.email || ''} onChange={handleChange} placeholder="E-mail principal" className="p-2 border rounded" />
+                        <input
+                            name="contacts.email"
+                            value={formState.contacts?.email || ''}
+                            onChange={handleChange}
+                            placeholder={isProfessionalPanelTier(formState.tier) ? "E-mail de acesso ao painel profissional (obrigatório)" : "E-mail principal (opcional)"}
+                            className={`p-2 border rounded ${isProfessionalPanelTier(formState.tier) ? "border-purple-400 bg-purple-50/40" : ""}`}
+                        />
+                        <div className="col-span-2 rounded-lg border border-purple-200 bg-purple-50/50 p-2 text-xs text-purple-900">
+                            <div className="font-bold mb-1">Acesso ao painel profissional</div>
+                            <p>
+                                Planos PRO, PREMIUM e MASTER precisam de e-mail de acesso. O profissional deve entrar com o mesmo e-mail para abrir o painel.
+                            </p>
+                            {professional?.id ? (
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <span className="px-2 py-1 rounded bg-white border border-purple-200 font-bold">Código: {panelAccessCode}</span>
+                                    <span className="px-2 py-1 rounded bg-white border border-purple-200">Link: {panelAccessLink}</span>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            const inviteText = `Olá! Seu acesso profissional no Habitus foi liberado.\n\nAcesse: ${panelAccessLink}\nE-mail: ${formState.contacts?.email || "(seu e-mail cadastrado)"}\nCódigo de vínculo: ${panelAccessCode}\n\nEntre com este mesmo e-mail para abrir o painel profissional.`;
+                                            try {
+                                                await navigator.clipboard.writeText(inviteText);
+                                                alert("Convite copiado.");
+                                            } catch {
+                                                alert("Não foi possível copiar agora.");
+                                            }
+                                        }}
+                                        className="px-2 py-1 rounded bg-purple-600 text-white font-semibold"
+                                    >
+                                        Copiar convite
+                                    </button>
+                                </div>
+                            ) : (
+                                <p className="mt-1 text-[11px]">Salve primeiro para gerar código de vínculo e convite.</p>
+                            )}
+                        </div>
 
                         <div className="col-span-2 text-sm font-bold text-gray-700 mt-3">Especialidades</div>
                         <input name="registryLabel" value={formState.registryLabel || ''} onChange={handleChange} placeholder="Inscrição no conselho" className="p-2 border rounded" />
@@ -1235,13 +2045,41 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                                     </label>
                                 ))}
                             </div>
-                            <div className="text-[11px] text-gray-500 mt-2">Outras especialidades (separe por vírgula, máx. {MAX_OTHER_SPECIALTIES})</div>
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                                <div className="text-[11px] text-gray-500">Outras especialidades (separe por vírgula, máx. {MAX_OTHER_SPECIALTIES})</div>
+                                <button
+                                    type="button"
+                                    onClick={() => setOtherSpecialtiesText("")}
+                                    className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-700 bg-red-50 hover:bg-red-100"
+                                >
+                                    Limpar outras
+                                </button>
+                            </div>
                             <input
                                 value={otherSpecialtiesText}
                                 onChange={(e) => setOtherSpecialtiesText(e.target.value)}
                                 placeholder="Ex: Clínica geral, Hospital"
                                 className="mt-1 p-2 border rounded w-full text-xs"
                             />
+                            {splitOtherSpecialties(otherSpecialtiesText).length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    {splitOtherSpecialties(otherSpecialtiesText).map((item) => (
+                                        <span key={item} className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-blue-50 border border-blue-200 text-[11px] text-blue-800">
+                                            {item}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const next = splitOtherSpecialties(otherSpecialtiesText).filter((s) => s !== item);
+                                                    setOtherSpecialtiesText(next.join(", "));
+                                                }}
+                                                className="px-1 rounded bg-white border border-blue-200 text-blue-700 font-semibold"
+                                            >
+                                                Excluir
+                                            </button>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         <div className="col-span-2 text-sm font-bold text-gray-700 mt-3">Anúncio</div>
@@ -1256,6 +2094,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                                 .map(c => <option key={c.id} value={String(c.id)}>{c.nome}</option>)}
                         </select>
                         <select name="tier" value={formState.tier || 'verified'} onChange={handleChange} className="p-2 border rounded bg-white font-bold text-purple-700 col-span-2">
+                            <option value="free">Free (limite de 30 vitalício)</option>
                             <option value="verified">Lista Vip</option>
                             <option value="top">Pro (Rodízio)</option>
                             <option value="exclusive">Premium (1 por Especialidade)</option>
@@ -1330,25 +2169,26 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                         </div>
                         <div className="col-span-2 text-sm font-bold text-gray-700 mt-3">Materiais do anúncio</div>
                         <div className="col-span-2">
-                              <div className="text-xs font-semibold text-gray-500 mb-1">Foto de perfil (400x400px ou 600x600px, até {formatBytes(PROFILE_IMAGE_MAX_BYTES)})</div>
-                              <div className="flex flex-wrap items-center gap-3">
-                                <input
-                                    type="file"
-                                    accept="image/jpeg,image/png,image/webp"
-                                    onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) handleProfileUpload(file);
-                                        if (e.target) e.target.value = '';
-                                    }}
-                                    className="text-xs"
-                                />
-                                {formState.photoUrl && (
-                                    <div className="flex items-center gap-2">
-                                        <img src={formState.photoUrl} alt="Foto de perfil" className="w-16 h-16 rounded-full object-cover border" />
-                                        <button type="button" onClick={() => setFormState(p => ({ ...p, photoUrl: '' }))} className="text-xs text-red-600">Remover</button>
-                                    </div>
-                                )}
-                              </div>
+                              <div className="text-xs font-semibold text-gray-500 mb-1">Foto de perfil</div>
+                              <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (file) handleProfilePhotoUpload(file);
+                                      if (e.target) e.target.value = "";
+                                  }}
+                                  disabled={isPhotoUploading}
+                                  className="text-xs"
+                              />
+                              <p className="text-[11px] text-gray-500 mt-1">
+                                  {isPhotoUploading ? "Enviando foto..." : `Upload local até ${formatBytes(PROFILE_IMAGE_MAX_BYTES)}.`}
+                              </p>
+                              {formState.photoUrl && (
+                                  <div className="mt-2">
+                                      <img src={formState.photoUrl} alt="Foto de perfil" className="w-16 h-16 rounded-full object-cover border" />
+                                  </div>
+                              )}
                               {uploadError && <p className="text-xs text-red-600 mt-1">{uploadError}</p>}
                           </div>
 
@@ -1435,40 +2275,15 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({ professional, onClo
                             <input
                                 value={keywordText}
                                 onChange={(e) => setKeywordText(e.target.value)}
-                                placeholder="Palavras-chave para aparecer (separe por virgula)"
+                                placeholder="Palavras-chave para o match (separe por virgula)"
                                 className="p-2 border rounded col-span-2"
                             />
-                            <input
-                                name="spotlightDailyLimit"
-                                type="number"
-                                min={1}
-                                max={5}
-                                value={formState.spotlightDailyLimit ?? 2}
-                                onChange={handleChange}
-                                placeholder="Limite por dia"
-                                className="p-2 border rounded"
-                            />
-                            <div className="col-span-2">
-                                <div className="text-xs font-semibold text-gray-500 mb-1">Rotinas personalizadas (máximo 10) - formato: Nome da rotina | Diamantes</div>
-                                <textarea
-                                    value={exclusiveRoutinesText}
-                                    onChange={(e) => setExclusiveRoutinesText(e.target.value)}
-                                    placeholder={"Rotina da manhã | 10\nRotina de estudos | 15"}
-                                    className="p-2 border rounded w-full h-28"
-                                />
-                                <p className="text-[11px] text-gray-500 mt-1">Cada linha representa uma rotina personalizada do profissional PREMIUM.</p>
-                            </div>
                         </div>
                     )}
 
 
-                    <input name="headline" value={formState.headline || ''} onChange={handleChange} placeholder="Headline / Assunto do Mês (Destaque)" className="p-2 border rounded w-full" />
-                    <div>
-                        <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                            <span>Bio curta</span>
-                            <span>{countChars(formState.bio || "")}/{BIO_MAX_CHARS} caracteres</span>
-                        </div>
-                        <textarea name="bio" value={formState.bio || ''} onChange={handleChange} placeholder="Bio curta" className="p-2 border rounded w-full h-20"></textarea>
+                    <div className="text-[11px] text-gray-500 -mt-1">
+                        Headline e bio curta são editadas pelo profissional no painel dele.
                     </div>
                     <div>
                         <div className="text-xs font-semibold text-gray-500 mb-1">Destaques (separe por vírgula)</div>

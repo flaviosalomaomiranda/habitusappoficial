@@ -1,11 +1,151 @@
 
 import { Professional } from '../types';
 
-export const SPECIALTIES: string[] = [
-    "Pediatria", "Odontopediatria", "Neurologia Pediátrica", "Psiquiatria Infantil",
-    "Psicologia Infantil", "Fonoaudiologia", "Terapia Ocupacional", "Fisioterapia Pediátrica",
-    "Psicopedagogia", "Neuropsicologia", "Nutrição Infantil", "Odontologia para Pacientes Especiais"
+export type SupportNetworkArea = {
+    key: string;
+    label: string;
+    keywords: string[];
+};
+
+export const SUPPORT_NETWORK_AREAS: SupportNetworkArea[] = [
+    { key: "all", label: "Tudo", keywords: [] },
+    { key: "medicina", label: "Medicina", keywords: ["med", "clinico", "cirurg", "pedi", "neuro", "cardio", "gineco"] },
+    { key: "odontologia", label: "Odonto", keywords: ["odonto", "dent", "ortodont", "periodont", "implanto"] },
+    { key: "saude_mental", label: "Saude Mental", keywords: ["psic", "psicanal", "psicopedag"] },
+    { key: "fisio_terapias", label: "Fisio/Terapias", keywords: ["fisio", "osteop", "quiropr", "ocupacional"] },
+    { key: "nutricao", label: "Nutri", keywords: ["nutri", "nutrol"] },
+    { key: "enfermagem", label: "Enfermagem", keywords: ["enferm"] },
+    { key: "outras", label: "Outras", keywords: ["fono", "podolog", "radiolog", "biomed", "educador"] },
 ];
+
+export const SUPPORT_NETWORK_SPECIALTIES_BY_AREA: Record<string, string[]> = {
+    medicina: [
+        "Alergista",
+        "Alergista Pediatrico",
+        "Anatomopatologista",
+        "Anestesiologista",
+        "Angiologista",
+        "Cardiologista",
+        "Cardiologista Pediatrico",
+        "Cirurgiao Bariatrico",
+        "Cirurgiao Cardiovascular",
+        "Cirurgiao da Mao",
+        "Cirurgiao de Cabeca e Pescoco",
+        "Cirurgiao do Aparelho Digestivo",
+        "Cirurgiao Geral",
+        "Cirurgiao Oncologico",
+        "Cirurgiao Pediatrico",
+        "Cirurgiao Plastico",
+        "Cirurgiao Toracico",
+        "Cirurgiao Vascular",
+        "Coloproctologista",
+        "Dermatologista",
+        "Endocrinologista",
+        "Endocrinologista Pediatrico",
+        "Endoscopista",
+        "Especialista em Clinica Medica",
+        "Especialista em Diagnostico por Imagem",
+        "Especialista em Dor",
+        "Especialista em Medicina do Adolescente",
+        "Especialista em Medicina Estetica",
+        "Especialista em Medicina Fisica e Reabilitacao",
+        "Especialista em Medicina Nuclear",
+        "Especialista em Medicina Preventiva",
+        "Especialista em Neonatologia",
+        "Especialista em Reproducao Humana",
+        "Especialista em Ultrassonografia",
+        "Gastroenterologista",
+        "Gastroenterologista Pediatrico",
+        "Generalista",
+        "Geneticista",
+        "Geriatra",
+        "Ginecologista",
+        "Hematologista",
+        "Hematologista Pediatrico",
+        "Hepatologista",
+        "Homeopata",
+        "Infectologista",
+        "Infectologista Pediatrico",
+        "Intensivista",
+        "Internista",
+        "Mastologista",
+        "Medico Acupunturista",
+        "Medico Citopatologista",
+        "Medico Clinico",
+        "Medico de Emergencia",
+        "Medico de Familia",
+        "Medico de Trafego",
+        "Medico do Esporte",
+        "Medico do Sono",
+        "Medico do Trabalho",
+        "Medico Hiperbarista",
+        "Medico Perito",
+        "Nefrologista",
+        "Nefrologista Pediatrico",
+        "Neurocirurgiao",
+        "Neurofisiologista",
+        "Neurologista",
+        "Neurologista Infantil",
+        "Nutrologo",
+        "Nutrologo Pediatrico",
+        "Oftalmologista",
+        "Oncologista",
+        "Ortopedista e Traumatologista",
+        "Otorrinolaringologista (Otorrino)",
+        "Patologista Clinico",
+        "Pediatra",
+        "Pneumologista",
+        "Pneumologista Pediatrico",
+        "Psiquiatra",
+        "Radiologista",
+        "Radioterapeuta",
+        "Reumatologista",
+        "Reumatologista Pediatrico",
+        "Sexologo",
+        "Urologista",
+    ],
+    odontologia: [
+        "Cirurgiao Buco-Maxilo-Facial",
+        "Cirurgiao Cranio-Maxilo-Facial",
+        "Dentista",
+        "Especialista em Harmonizacao Orofacial",
+        "Implantodontista",
+        "Odontopediatra",
+        "Ortodontista",
+        "Periodontista",
+    ],
+    saude_mental: [
+        "Psicanalista",
+        "Psicologo",
+        "Psicopedagogo",
+    ],
+    fisio_terapias: [
+        "Fisioterapeuta",
+        "Osteopata",
+        "Quiropraxista",
+        "Terapeuta Ocupacional",
+    ],
+    nutricao: [
+        "Nutricionista",
+    ],
+    enfermagem: [
+        "Enfermeiro",
+    ],
+    outras: [
+        "Educador Fisico",
+        "Especialista em Administracao em Saude",
+        "Especialista em Biomedicina",
+        "Especialista em Terapias Complementares",
+        "Fonoaudiologo",
+        "Podologo",
+        "Tecnico em Analises Clinicas",
+        "Tecnico em Radiologia",
+    ],
+};
+
+export const SPECIALTIES: string[] = Array.from(
+    new Set(Object.values(SUPPORT_NETWORK_SPECIALTIES_BY_AREA).flat())
+).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
 // Seed inicial para a Rede de Apoio
 // Updated to use the new tier system instead of isTop/topJoinedAt

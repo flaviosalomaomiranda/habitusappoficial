@@ -37,6 +37,7 @@ import {
 } from "../utils/dateUtils";
 
 import { PRODUCTS_SEED } from "../data/products";
+import { ANIMAL_EMOJIS } from "../constants";
 
 // ✅ Firestore
 import {
@@ -46,6 +47,7 @@ import {
   setDoc,
   deleteDoc,
   getDocs,
+  getDocsFromServer,
   onSnapshot,
   serverTimestamp,
   query,
@@ -83,6 +85,8 @@ export interface RewardAvailability {
 }
 
 const MAX_CHILD_NAME_LENGTH = 12;
+const MAX_FREEMIUM_PROFILES = 4; // principal + 3 secundarios
+const PROFESSIONAL_IMPRESSION_DEDUPE_MS = 5 * 60 * 1000;
 
 interface AppContextType {
   // ✅ NOVO (para o AuthGate setar)
@@ -92,13 +96,21 @@ interface AppContextType {
   children: Child[];
   setChildren: Dispatch<SetStateAction<Child[]>>;
 
-  addChild: (name: string, avatar: string, birthDate?: string) => void;
+  addChild: (
+    name: string,
+    avatar: string,
+    birthDate?: string,
+    sex?: Child["sex"],
+    extraProfile?: Partial<Child>
+  ) => void;
   updateChild: (
     childId: string,
     name: string,
     avatar: string,
     birthDate?: string,
-    showAgeInfo?: boolean
+    showAgeInfo?: boolean,
+    sex?: Child["sex"],
+    extraProfile?: Partial<Child>
   ) => void;
   deleteChild: (childId: string) => void;
 
@@ -118,9 +130,10 @@ interface AppContextType {
   rejectHabitCompletion: (childId: string, habitId: string, date: string) => void;
 
   routineTemplates: RoutineTemplate[];
-  addRoutineTemplate: (template: Omit<RoutineTemplate, "id">) => void;
-  updateRoutineTemplate: (template: RoutineTemplate) => void;
-  deleteRoutineTemplate: (templateId: string) => void;
+  addRoutineTemplate: (template: Omit<RoutineTemplate, "id">) => Promise<void>;
+  updateRoutineTemplate: (template: RoutineTemplate) => Promise<void>;
+  deleteRoutineTemplate: (templateId: string) => Promise<void>;
+  refreshRoutineTemplates: () => Promise<void>;
 
   shopRewards: ShopReward[];
   addShopReward: (reward: Omit<ShopReward, "id">) => void;
@@ -148,7 +161,7 @@ interface AppContextType {
   toggleFavoriteProfessional: (professionalId: string) => void;
   trackProfessionalEvent: (
     professionalId: string,
-    eventType: "whatsapp_click" | "contact_click" | "location_click" | "favorite_add" | "routine_import",
+    eventType: "impression" | "whatsapp_click" | "contact_click" | "location_click" | "favorite_add" | "routine_import",
     metadata?: Record<string, any>
   ) => void;
   trackAdEvent: (
@@ -187,8 +200,8 @@ interface AppContextType {
 
   productRecommendations: Recommendation[];
   replaceProductRecommendations: (recommendations: Recommendation[]) => Promise<void>;
-  addRecommendation: (recommendation: Omit<Recommendation, "id" | "createdAt" | "updatedAt">) => void;
-  updateRecommendation: (recommendation: Recommendation) => void;
+  addRecommendation: (recommendation: Omit<Recommendation, "id" | "createdAt" | "updatedAt">) => Promise<void>;
+  updateRecommendation: (recommendation: Recommendation) => Promise<void>;
   deleteRecommendation: (recommendationId: string) => void;
   tagTaxonomy: TagTaxonomy;
   suggestedTagCandidates: SuggestedTag[];
@@ -275,6 +288,79 @@ function normalizeChildName(name: string): string {
   return name.trim().slice(0, MAX_CHILD_NAME_LENGTH);
 }
 
+function getFirstName(value?: string): string {
+  const token = String(value || "").trim().split(/\s+/).filter(Boolean)[0];
+  return token || "";
+}
+
+function getPrincipalChildId(uid: string): string {
+  return `principal-${uid}`;
+}
+
+function parseScheduleTimeToMinutes(value?: string): number | null {
+  if (!value || !/^\d{2}:\d{2}$/.test(value)) return null;
+  const [h, m] = value.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return h * 60 + m;
+}
+
+function getPeriodRank(period?: string): number {
+  if (period === "all_day") return 0;
+  if (period === "morning") return 0;
+  if (period === "afternoon") return 1;
+  if (period === "night") return 2;
+  return 3;
+}
+
+function formatDateLocal(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function nextReminderRunAtMs(habit: Habit, now: Date): number | null {
+  const schedule = habit.schedule || ({} as any);
+  const mode = schedule.mode || (schedule.time ? "rigid" : "flex");
+  if (mode !== "rigid") return null;
+  if (!schedule.reminderEnabled) return null;
+  if (!schedule.time || !/^\d{2}:\d{2}$/.test(schedule.time)) return null;
+
+  const [hh, mm] = schedule.time.split(":").map(Number);
+  const scheduleType = schedule.type;
+  const startDate = habit.startDate || "";
+  const endDate = habit.endDate || "";
+  const onceDate = schedule.date || "";
+  const weeklyDays = Array.isArray(schedule.days) ? schedule.days : [];
+  const monthDay = Number(schedule.dayOfMonth || 0);
+
+  const matchesDate = (dateStr: string, dateObj: Date) => {
+    if (startDate && dateStr < startDate) return false;
+    if (endDate && dateStr > endDate) return false;
+    if (scheduleType === "ONCE") return onceDate === dateStr;
+    if (scheduleType === "DAILY") return true;
+    if (scheduleType === "WEEKLY") return weeklyDays.includes(dateObj.getDay());
+    if (scheduleType === "MONTHLY") {
+      if (monthDay > 0) return dateObj.getDate() === monthDay;
+      return true;
+    }
+    return true;
+  };
+
+  const cursor = new Date(now);
+  cursor.setHours(0, 0, 0, 0);
+  for (let i = 0; i < 400; i += 1) {
+    const candidate = new Date(cursor);
+    candidate.setDate(cursor.getDate() + i);
+    const dateStr = formatDateLocal(candidate);
+    if (!matchesDate(dateStr, candidate)) continue;
+    candidate.setHours(hh, mm, 0, 0);
+    return candidate.getTime();
+  }
+  return null;
+}
+
 function readFirestorePrimitive(value: any): any {
   if (!value || typeof value !== "object") return undefined;
   if ("stringValue" in value) return value.stringValue;
@@ -305,9 +391,10 @@ function parseFirestoreDocumentToProfessional(doc: any): Professional | null {
   Object.entries(fields).forEach(([key, value]) => {
     mapped[key] = readFirestorePrimitive(value);
   });
-  if (!mapped.id && typeof doc?.document?.name === "string") {
+  if (typeof doc?.document?.name === "string") {
     const parts = doc.document.name.split("/");
-    mapped.id = parts[parts.length - 1];
+    const docId = parts[parts.length - 1];
+    if (docId) mapped.id = docId;
   }
   if (!mapped.id || !mapped.name) return null;
   return mapped as Professional;
@@ -330,10 +417,27 @@ function parseFirestoreDocumentToRoutineTemplate(doc: any): RoutineTemplate | nu
     name: String(mapped.name),
     imageUrl: typeof mapped.imageUrl === "string" ? mapped.imageUrl : undefined,
     isActive: mapped.isActive !== false,
+    areaKey: typeof mapped.areaKey === "string" ? mapped.areaKey : undefined,
+    areaLabel: typeof mapped.areaLabel === "string" ? mapped.areaLabel : undefined,
+    libraryType:
+      mapped.libraryType === "global" || mapped.libraryType === "sponsored"
+        ? mapped.libraryType
+        : undefined,
     semanticTags: Array.isArray(mapped.semanticTags) ? mapped.semanticTags : undefined,
-    uf: typeof mapped.uf === "string" ? mapped.uf : undefined,
-    cityId: typeof mapped.cityId === "string" ? mapped.cityId : undefined,
-    cityName: typeof mapped.cityName === "string" ? mapped.cityName : undefined,
+    sponsorNote: typeof mapped.sponsorNote === "string" ? mapped.sponsorNote : undefined,
+    leftSwipeActionType:
+      mapped.leftSwipeActionType === "donation" ||
+      mapped.leftSwipeActionType === "whatsapp" ||
+      mapped.leftSwipeActionType === "url"
+        ? mapped.leftSwipeActionType
+        : undefined,
+    leftSwipeActionLabel: typeof mapped.leftSwipeActionLabel === "string" ? mapped.leftSwipeActionLabel : undefined,
+    leftSwipeActionUrl: typeof mapped.leftSwipeActionUrl === "string" ? mapped.leftSwipeActionUrl : undefined,
+    leftSwipeActionWhatsapp:
+      mapped.leftSwipeActionWhatsapp != null ? String(mapped.leftSwipeActionWhatsapp) : undefined,
+    uf: mapped.uf != null ? String(mapped.uf).trim() : undefined,
+    cityId: mapped.cityId != null ? String(mapped.cityId).trim() : undefined,
+    cityName: mapped.cityName != null ? String(mapped.cityName).trim() : undefined,
     icon: mapped.icon,
     reward: mapped.reward,
     schedule: mapped.schedule,
@@ -387,9 +491,13 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   );
   const [supportNetworkPricing, setSupportNetworkPricing] = useState<SupportNetworkPricing>({
     plans: {
+      free: { monthly: 0, annual: 0 },
       verified: { monthly: 0, annual: 0 },
+      vip: { monthly: 0, annual: 0 },
       top: { monthly: 0, annual: 0 },
+      pro: { monthly: 0, annual: 0 },
       exclusive: { monthly: 0, annual: 0 },
+      premium: { monthly: 0, annual: 0 },
       master: { monthly: 0, annual: 0 },
     },
   });
@@ -462,9 +570,13 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     const plans = readFirestorePrimitive(fields.plans) || {};
     return {
       plans: {
+        free: { monthly: Number(plans?.free?.monthly ?? 0), annual: Number(plans?.free?.annual ?? 0) },
         verified: { monthly: Number(plans?.verified?.monthly ?? 0), annual: Number(plans?.verified?.annual ?? 0) },
+        vip: { monthly: Number(plans?.vip?.monthly ?? plans?.verified?.monthly ?? 0), annual: Number(plans?.vip?.annual ?? plans?.verified?.annual ?? 0) },
         top: { monthly: Number(plans?.top?.monthly ?? 0), annual: Number(plans?.top?.annual ?? 0) },
+        pro: { monthly: Number(plans?.pro?.monthly ?? plans?.top?.monthly ?? 0), annual: Number(plans?.pro?.annual ?? plans?.top?.annual ?? 0) },
         exclusive: { monthly: Number(plans?.exclusive?.monthly ?? 0), annual: Number(plans?.exclusive?.annual ?? 0) },
+        premium: { monthly: Number(plans?.premium?.monthly ?? plans?.exclusive?.monthly ?? 0), annual: Number(plans?.premium?.annual ?? plans?.exclusive?.annual ?? 0) },
         master: { monthly: Number(plans?.master?.monthly ?? 0), annual: Number(plans?.master?.annual ?? 0) },
       },
       updatedAt: readFirestorePrimitive(fields.updatedAt),
@@ -644,6 +756,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
 
     const colRef = collection(db, "families", familyId, "children");
     const unsubKids = onSnapshot(colRef, (snap) => {
+      const principalId = uid ? getPrincipalChildId(uid) : null;
       const kids = snap.docs.map((d) => {
         const data = d.data() as any;
         return {
@@ -655,8 +768,35 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
           starHistory: data.starHistory ?? {},
           birthDate: data.birthDate,
           showAgeInfo: data.showAgeInfo ?? true,
+          fullName: data.fullName,
+          preferredName: data.preferredName,
+          sex: data.sex,
+          phone: data.phone,
+          phoneDigits: data.phoneDigits,
+          shareForProfessionalLink: data.shareForProfessionalLink,
+          shareBlocks: data.shareBlocks,
+          mainGoals: Array.isArray(data.mainGoals) ? data.mainGoals : [],
+          habitsToBuild: Array.isArray(data.habitsToBuild) ? data.habitsToBuild : [],
+          habitsToReduce: Array.isArray(data.habitsToReduce) ? data.habitsToReduce : [],
+          interests: Array.isArray(data.interests) ? data.interests : [],
+          shoppingPreferences: Array.isArray(data.shoppingPreferences) ? data.shoppingPreferences : [],
+          timeGoals: Array.isArray(data.timeGoals) ? data.timeGoals : [],
+          healthComplaints: Array.isArray(data.healthComplaints) ? data.healthComplaints : [],
+          neuroConditions: Array.isArray(data.neuroConditions) ? data.neuroConditions : [],
+          semanticTags: Array.isArray(data.semanticTags) ? data.semanticTags : [],
+          recommendedProfessionalSpecialties: Array.isArray(data.recommendedProfessionalSpecialties)
+            ? data.recommendedProfessionalSpecialties
+            : [],
+          updatedAt: data.updatedAt,
         } as Child;
       });
+      if (principalId) {
+        kids.sort((a, b) => {
+          if (a.id === principalId) return -1;
+          if (b.id === principalId) return 1;
+          return 0;
+        });
+      }
       setChildrenData(kids);
     });
 
@@ -664,7 +804,94 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       unsubSettings();
       unsubKids();
     };
-  }, [familyId, setSettings]);
+  }, [familyId, uid, setSettings]);
+
+  useEffect(() => {
+    if (!familyId || !uid) return;
+    const principalId = getPrincipalChildId(uid);
+    const current = childrenData.find((child) => child.id === principalId);
+    const fallbackFullName =
+      String(userProfile?.fullName || "").trim() ||
+      String(auth.currentUser?.displayName || "").trim() ||
+      String(auth.currentUser?.email || "").split("@")[0] ||
+      "Perfil principal";
+    const preferredName = String(userProfile?.preferredName || "").trim();
+    const displayNameRaw = preferredName || getFirstName(fallbackFullName) || "Principal";
+    const nextName = normalizeChildName(displayNameRaw);
+    const nextAvatar = String(userProfile?.avatar || current?.avatar || ANIMAL_EMOJIS[0] || "🙂");
+    const sameArray = (a?: string[], b?: string[]) => JSON.stringify(a || []) === JSON.stringify(b || []);
+
+    const shouldCreate =
+      !current ||
+      current.name !== nextName ||
+      current.avatar !== nextAvatar ||
+      (current.fullName || "") !== fallbackFullName ||
+      (current.preferredName || "") !== preferredName ||
+      (current.birthDate || "") !== (userProfile?.birthDate || "") ||
+      (current.sex || "prefer_not_to_say") !== (userProfile?.sex || "prefer_not_to_say") ||
+      (current.phone || "") !== (userProfile?.phone || "") ||
+      (current.phoneDigits || "") !== (userProfile?.phoneDigits || "") ||
+      Boolean(current.shareForProfessionalLink) !== Boolean(userProfile?.shareForProfessionalLink) ||
+      (current.shareBlocks?.personal ?? true) !== (userProfile?.shareBlocks?.personal ?? true) ||
+      (current.shareBlocks?.profile ?? true) !== (userProfile?.shareBlocks?.profile ?? true) ||
+      (current.shareBlocks?.health ?? true) !== (userProfile?.shareBlocks?.health ?? true) ||
+      !sameArray(current.mainGoals, userProfile?.mainGoals) ||
+      !sameArray(current.habitsToBuild, userProfile?.habitsToBuild) ||
+      !sameArray(current.habitsToReduce, userProfile?.habitsToReduce) ||
+      !sameArray(current.interests, userProfile?.interests) ||
+      !sameArray(current.shoppingPreferences, userProfile?.shoppingPreferences) ||
+      !sameArray(current.timeGoals, userProfile?.timeGoals) ||
+      !sameArray(current.healthComplaints, userProfile?.healthComplaints) ||
+      !sameArray(current.neuroConditions, userProfile?.neuroConditions) ||
+      !sameArray(current.semanticTags, userProfile?.semanticTags) ||
+      !sameArray(current.recommendedProfessionalSpecialties, userProfile?.recommendedProfessionalSpecialties);
+
+    if (!shouldCreate) return;
+
+    const principalChild: Child = {
+      id: principalId,
+      name: nextName,
+      avatar: nextAvatar,
+      stars: current?.stars ?? 0,
+      habits: current?.habits ?? [],
+      starHistory: current?.starHistory ?? {},
+      birthDate: userProfile?.birthDate || current?.birthDate,
+      showAgeInfo: current?.showAgeInfo ?? true,
+      sex: userProfile?.sex || current?.sex || "prefer_not_to_say",
+      fullName: fallbackFullName,
+      preferredName: preferredName || undefined,
+      phone: userProfile?.phone || current?.phone,
+      phoneDigits: userProfile?.phoneDigits || current?.phoneDigits,
+      shareForProfessionalLink: userProfile?.shareForProfessionalLink ?? current?.shareForProfessionalLink ?? true,
+      shareBlocks: {
+        personal: userProfile?.shareBlocks?.personal ?? current?.shareBlocks?.personal ?? true,
+        profile: userProfile?.shareBlocks?.profile ?? current?.shareBlocks?.profile ?? true,
+        health: userProfile?.shareBlocks?.health ?? current?.shareBlocks?.health ?? true,
+      },
+      mainGoals: userProfile?.mainGoals ?? current?.mainGoals ?? [],
+      habitsToBuild: userProfile?.habitsToBuild ?? current?.habitsToBuild ?? [],
+      habitsToReduce: userProfile?.habitsToReduce ?? current?.habitsToReduce ?? [],
+      interests: userProfile?.interests ?? current?.interests ?? [],
+      shoppingPreferences: userProfile?.shoppingPreferences ?? current?.shoppingPreferences ?? [],
+      timeGoals: userProfile?.timeGoals ?? current?.timeGoals ?? [],
+      healthComplaints: userProfile?.healthComplaints ?? current?.healthComplaints ?? [],
+      neuroConditions: userProfile?.neuroConditions ?? current?.neuroConditions ?? [],
+      semanticTags: userProfile?.semanticTags ?? current?.semanticTags ?? [],
+      recommendedProfessionalSpecialties:
+        userProfile?.recommendedProfessionalSpecialties ?? current?.recommendedProfessionalSpecialties ?? [],
+      updatedAt: new Date().toISOString(),
+    };
+
+    const payload = stripUndefinedDeep({
+      ...principalChild,
+      updatedAt: serverTimestamp(),
+      createdAt: current ? undefined : serverTimestamp(),
+    });
+
+    void setDoc(doc(db, "families", familyId, "children", principalId), payload, { merge: true }).catch((err) =>
+      console.error("Falha ao sincronizar perfil principal nos perfis da familia:", err)
+    );
+  }, [familyId, uid, userProfile, childrenData]);
 
   useEffect(() => {
     const templatesRef = collection(db, "routineTemplatesGlobal");
@@ -690,10 +917,18 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
             name: data.name,
             imageUrl: data.imageUrl,
             isActive: data.isActive ?? true,
+            areaKey: data.areaKey,
+            areaLabel: data.areaLabel,
+            libraryType: data.libraryType,
             semanticTags: Array.isArray(data.semanticTags) ? data.semanticTags : undefined,
-            uf: data.uf,
-            cityId: data.cityId,
-            cityName: data.cityName,
+            sponsorNote: data.sponsorNote,
+            leftSwipeActionType: data.leftSwipeActionType,
+            leftSwipeActionLabel: data.leftSwipeActionLabel,
+            leftSwipeActionUrl: data.leftSwipeActionUrl,
+            leftSwipeActionWhatsapp: data.leftSwipeActionWhatsapp != null ? String(data.leftSwipeActionWhatsapp) : undefined,
+            uf: data.uf != null ? String(data.uf).trim() : undefined,
+            cityId: data.cityId != null ? String(data.cityId).trim() : undefined,
+            cityName: data.cityName != null ? String(data.cityName).trim() : undefined,
             icon: data.icon,
             reward: data.reward,
             schedule: data.schedule,
@@ -751,6 +986,9 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
               ageMin: data.ageMin ?? null,
               ageMax: data.ageMax ?? null,
               priority: Number(data.priority ?? 0),
+              badgeText: data.badgeText || "",
+              badgeType: data.badgeType,
+              badgeActive: data.badgeActive ?? false,
               placement: data.placement,
               createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || new Date().toISOString()),
               updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : (data.updatedAt || new Date().toISOString()),
@@ -842,6 +1080,105 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     void setDoc(doc(db, "families", familyId, "children", child.id), payload, { merge: true }).catch(
       (err) => console.error("Falha ao salvar child:", err)
     );
+
+    void (async () => {
+      try {
+        const remindersQ = query(
+          collection(db, "reminderSchedules"),
+          where("familyId", "==", familyId),
+          where("childId", "==", child.id),
+          limit(500)
+        );
+        const remindersSnap = await getDocs(remindersQ);
+        const existingByHabit = new Map<string, any>();
+        remindersSnap.docs.forEach((docSnap) => {
+          const data = docSnap.data() as any;
+          existingByHabit.set(String(data?.habitId || ""), { id: docSnap.id, ...data });
+        });
+
+        const now = new Date();
+        const nextActiveHabitIds = new Set<string>();
+        const batch = writeBatch(db);
+
+        child.habits.forEach((habit) => {
+          const schedule = habit.schedule || ({} as any);
+          const mode = schedule.mode || (schedule.time ? "rigid" : "flex");
+          if (mode !== "rigid" || !schedule.reminderEnabled || !schedule.time) return;
+          const nextRunAtMs = nextReminderRunAtMs(habit, now);
+          const docId = `${familyId}__${child.id}__${habit.id}`;
+          nextActiveHabitIds.add(habit.id);
+          const existing = existingByHabit.get(habit.id);
+
+          if (!nextRunAtMs) {
+            batch.set(
+              doc(db, "reminderSchedules", docId),
+              {
+                id: docId,
+                familyId,
+                childId: child.id,
+                childName: child.name,
+                habitId: habit.id,
+                habitName: habit.name,
+                scheduleType: schedule.type || "DAILY",
+                time: schedule.time,
+                timezone: schedule.timezone || "America/Sao_Paulo",
+                reminderEnabled: false,
+                isActive: false,
+                updatedAt: serverTimestamp(),
+              },
+              { merge: true }
+            );
+            return;
+          }
+
+          batch.set(
+            doc(db, "reminderSchedules", docId),
+            stripUndefinedDeep({
+              id: docId,
+              familyId,
+              childId: child.id,
+              childName: child.name,
+              habitId: habit.id,
+              habitName: habit.name,
+              scheduleType: schedule.type || "DAILY",
+              days: schedule.days,
+              dayOfMonth: schedule.dayOfMonth,
+              onceDate: schedule.date,
+              startDate: habit.startDate,
+              endDate: habit.endDate,
+              mode: "rigid",
+              time: schedule.time,
+              timezone: schedule.timezone || "America/Sao_Paulo",
+              reminderEnabled: true,
+              isActive: true,
+              nextRunAtMs,
+              lastSentDate: existing?.lastSentDate || null,
+              updatedAt: serverTimestamp(),
+              createdAt: existing?.createdAt || serverTimestamp(),
+            }),
+            { merge: true }
+          );
+        });
+
+        existingByHabit.forEach((existing, habitId) => {
+          if (!nextActiveHabitIds.has(habitId)) {
+            batch.set(
+              doc(db, "reminderSchedules", String(existing.id)),
+              {
+                isActive: false,
+                reminderEnabled: false,
+                updatedAt: serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
+        });
+
+        await batch.commit();
+      } catch (err) {
+        console.error("Falha ao sincronizar reminderSchedules:", err);
+      }
+    })();
   };
 
   /** ? Salva familyLocation no Firestore */
@@ -895,7 +1232,16 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     if (supportNetworkProfessionals.length === 0) return;
     const normalized = normalizeSpecialties(supportNetworkProfessionals);
     if (!normalized) return;
-    const changed = normalized.some((p, i) => p.specialties !== supportNetworkProfessionals[i]?.specialties);
+    const changed = normalized.some((p, i) => {
+      const current = supportNetworkProfessionals[i];
+      const nextSpecs = Array.isArray(p.specialties) ? p.specialties : [];
+      const currentSpecs = Array.isArray(current?.specialties) ? current.specialties : [];
+      if (nextSpecs.length !== currentSpecs.length) return true;
+      for (let idx = 0; idx < nextSpecs.length; idx += 1) {
+        if (nextSpecs[idx] !== currentSpecs[idx]) return true;
+      }
+      return false;
+    });
     if (changed) {
       setSupportNetworkProfessionals(normalized);
     }
@@ -909,9 +1255,13 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     const applyPricing = (data: any) => {
       setSupportNetworkPricing({
         plans: {
+          free: { monthly: Number(data.plans?.free?.monthly ?? 0), annual: Number(data.plans?.free?.annual ?? 0) },
           verified: { monthly: Number(data.plans?.verified?.monthly ?? 0), annual: Number(data.plans?.verified?.annual ?? 0) },
+          vip: { monthly: Number(data.plans?.vip?.monthly ?? data.plans?.verified?.monthly ?? 0), annual: Number(data.plans?.vip?.annual ?? data.plans?.verified?.annual ?? 0) },
           top: { monthly: Number(data.plans?.top?.monthly ?? 0), annual: Number(data.plans?.top?.annual ?? 0) },
+          pro: { monthly: Number(data.plans?.pro?.monthly ?? data.plans?.top?.monthly ?? 0), annual: Number(data.plans?.pro?.annual ?? data.plans?.top?.annual ?? 0) },
           exclusive: { monthly: Number(data.plans?.exclusive?.monthly ?? 0), annual: Number(data.plans?.exclusive?.annual ?? 0) },
+          premium: { monthly: Number(data.plans?.premium?.monthly ?? data.plans?.exclusive?.monthly ?? 0), annual: Number(data.plans?.premium?.annual ?? data.plans?.exclusive?.annual ?? 0) },
           master: { monthly: Number(data.plans?.master?.monthly ?? 0), annual: Number(data.plans?.master?.annual ?? 0) },
         },
         updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt,
@@ -936,9 +1286,13 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
         setSupportNetworkPricing((prev) => ({
           ...prev,
           plans: {
+            free: { monthly: 0, annual: 0 },
             verified: { monthly: 0, annual: 0 },
+            vip: { monthly: 0, annual: 0 },
             top: { monthly: 0, annual: 0 },
+            pro: { monthly: 0, annual: 0 },
             exclusive: { monthly: 0, annual: 0 },
+            premium: { monthly: 0, annual: 0 },
             master: { monthly: 0, annual: 0 },
           },
         }));
@@ -976,7 +1330,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     const unsub = onSnapshot(
       collection(db, "supportNetwork"),
       (snap) => {
-        const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Professional[];
+        const docs = snap.docs.map((d) => ({ ...(d.data() as any), id: d.id })) as Professional[];
         // Reflete exatamente o estado da coleção na nuvem (inclusive quando vazia)
         setSupportNetworkProfessionals(docs);
       },
@@ -985,8 +1339,19 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
         applyRestFallback().catch(() => null);
       }
     );
+    const refreshInterval = window.setInterval(() => {
+      applyRestFallback().catch(() => null);
+    }, 120000);
+    const handleVisibilityRefresh = () => {
+      if (document.visibilityState === "visible") {
+        applyRestFallback().catch(() => null);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityRefresh);
     return () => {
       cancelled = true;
+      window.clearInterval(refreshInterval);
+      document.removeEventListener("visibilitychange", handleVisibilityRefresh);
       unsub();
     };
   }, [uid]);
@@ -1033,64 +1398,90 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     await updateFamilySettings(familyId, { defaultMasterProfessionalId: professionalId ?? null });
   };
 
-  const addRecommendation = (data: Omit<Recommendation, "id" | "createdAt" | "updatedAt">) => {
+  const addRecommendation = async (data: Omit<Recommendation, "id" | "createdAt" | "updatedAt">): Promise<void> => {
+    const safeTitle = String(data.title ?? "").trim();
+    const safeCategory = String(data.category ?? "").trim();
+    const safeDescription = typeof data.description === "string" ? data.description : "";
+    const safeTags = Array.isArray(data.tags) ? data.tags.map((tag) => String(tag)) : [];
     const now = new Date().toISOString();
-    const canonicalTags = canonicalizeTags(
-      normalizeTags([
-        ...(data.tags || []),
-        ...inferSemanticTags(data.title, data.description, data.category),
-        ...extractFreeTextTags(data.title),
-        ...extractFreeTextTags(data.description),
-      ]),
-      tagTaxonomy.synonyms
-    );
+    let canonicalTags: string[] = normalizeTags(safeTags);
+    try {
+      canonicalTags = canonicalizeTags(
+        normalizeTags([
+          ...safeTags,
+          ...inferSemanticTags(safeTitle, safeDescription, safeCategory),
+          ...extractFreeTextTags(safeTitle),
+          ...extractFreeTextTags(safeDescription),
+        ]),
+        tagTaxonomy.synonyms
+      );
+    } catch (err) {
+      console.error("Falha ao inferir tags da recomendação (add):", err);
+    }
     const newRec: Recommendation = {
       ...data,
+      title: safeTitle,
+      category: safeCategory,
+      description: safeDescription,
       tags: canonicalTags,
       id: `prod-${crypto.randomUUID()}`,
       createdAt: now,
       updatedAt: now,
     };
     setProductRecommendations((prev) => [...prev, newRec]);
-    setDoc(
-      doc(db, "productRecommendations", newRec.id),
-      {
+    const payload = stripUndefinedDeep({
         ...newRec,
         updatedAt: serverTimestamp(),
         createdAt: serverTimestamp(),
         updatedByEmail: auth.currentUser?.email ?? null,
-      },
+      });
+    await setDoc(
+      doc(db, "productRecommendations", newRec.id),
+      payload,
       { merge: true }
-    ).catch((err) => console.error("Falha ao criar recomendação:", err));
+    );
   };
 
-  const updateRecommendation = (updatedRec: Recommendation) => {
-    const canonicalTags = canonicalizeTags(
-      normalizeTags([
-        ...(updatedRec.tags || []),
-        ...inferSemanticTags(updatedRec.title, updatedRec.description, updatedRec.category),
-        ...extractFreeTextTags(updatedRec.title),
-        ...extractFreeTextTags(updatedRec.description),
-      ]),
-      tagTaxonomy.synonyms
-    );
+  const updateRecommendation = async (updatedRec: Recommendation): Promise<void> => {
+    const safeTitle = String(updatedRec.title ?? "").trim();
+    const safeCategory = String(updatedRec.category ?? "").trim();
+    const safeDescription = typeof updatedRec.description === "string" ? updatedRec.description : "";
+    const safeTags = Array.isArray(updatedRec.tags) ? updatedRec.tags.map((tag) => String(tag)) : [];
+    let canonicalTags: string[] = normalizeTags(safeTags);
+    try {
+      canonicalTags = canonicalizeTags(
+        normalizeTags([
+          ...safeTags,
+          ...inferSemanticTags(safeTitle, safeDescription, safeCategory),
+          ...extractFreeTextTags(safeTitle),
+          ...extractFreeTextTags(safeDescription),
+        ]),
+        tagTaxonomy.synonyms
+      );
+    } catch (err) {
+      console.error("Falha ao inferir tags da recomendação (update):", err);
+    }
     const nextRec = {
       ...updatedRec,
+      title: safeTitle,
+      category: safeCategory,
+      description: safeDescription,
       tags: canonicalTags,
       updatedAt: new Date().toISOString(),
     };
     setProductRecommendations((prev) =>
       prev.map((rec) => (rec.id === nextRec.id ? nextRec : rec))
     );
-    setDoc(
-      doc(db, "productRecommendations", nextRec.id),
-      {
+    const payload = stripUndefinedDeep({
         ...nextRec,
         updatedAt: serverTimestamp(),
         updatedByEmail: auth.currentUser?.email ?? null,
-      },
+      });
+    await setDoc(
+      doc(db, "productRecommendations", nextRec.id),
+      payload,
       { merge: true }
-    ).catch((err) => console.error("Falha ao atualizar recomendação:", err));
+    );
   };
 
   const deleteRecommendation = (recommendationId: string) => {
@@ -1125,12 +1516,13 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
         createdAt: rec.createdAt || now,
         updatedAt: now,
       };
-      batch.set(doc(db, "productRecommendations", id), {
+      const payload = stripUndefinedDeep({
         ...next,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         updatedByEmail: auth.currentUser?.email ?? null,
       });
+      batch.set(doc(db, "productRecommendations", id), payload);
       return next;
     });
     await batch.commit();
@@ -1227,18 +1619,43 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
 
   const trackProfessionalEvent = (
     professionalId: string,
-    eventType: "whatsapp_click" | "contact_click" | "location_click" | "favorite_add" | "routine_import",
+    eventType: "impression" | "whatsapp_click" | "contact_click" | "location_click" | "favorite_add" | "routine_import",
     metadata: Record<string, any> = {}
   ) => {
     if (!professionalId) return;
+    if (eventType === "impression" && typeof window !== "undefined") {
+      const slot = String(metadata?.slot || "default");
+      const key = `support-prof-impression:${professionalId}:${slot}`;
+      const now = Date.now();
+      try {
+        const raw = sessionStorage.getItem(key);
+        const expiresAt = Number(raw || "0");
+        if (Number.isFinite(expiresAt) && expiresAt > now) {
+          return;
+        }
+        sessionStorage.setItem(key, String(now + PROFESSIONAL_IMPRESSION_DEDUPE_MS));
+      } catch {}
+    }
     const fieldMap: Record<string, string> = {
+      impression: "impressions",
       whatsapp_click: "whatsappClicks",
       contact_click: "contactClicks",
       location_click: "locationClicks",
       favorite_add: "favoriteAdds",
       routine_import: "routineImportClicks",
     };
+    const safeMetadata = stripUndefinedDeep(metadata || {});
     const statField = fieldMap[eventType];
+    const todayStr = getTodayDateString();
+    const slot = String(safeMetadata?.slot || "general");
+    const slotGroup = slot.startsWith("pro_carousel")
+      ? "pro_carousel"
+      : slot.startsWith("hero_exclusive")
+        ? "hero_exclusive"
+        : slot;
+    const prof = latestSupportNetworkRef.current.find((item) => item.id === professionalId);
+    const cityId = String(safeMetadata?.cityId || prof?.cityId || "");
+    const dailyDocId = `${todayStr}__${professionalId}__${slotGroup}__${cityId || "global"}`;
 
     setDoc(
       doc(db, "supportNetworkStats", professionalId),
@@ -1250,15 +1667,37 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       { merge: true }
     ).catch((err) => console.error("Falha ao incrementar métrica profissional:", err));
 
+    setDoc(
+      doc(db, "supportNetworkDailyStats", dailyDocId),
+      {
+        id: dailyDocId,
+        date: todayStr,
+        professionalId,
+        cityId: cityId || null,
+        slot,
+        slotGroup,
+        [statField]: increment(1),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    ).catch((err) => console.error("Falha ao incrementar métrica diária profissional:", err));
+
     const user = auth.currentUser;
-    addDoc(collection(db, "supportNetworkEvents"), {
-      professionalId,
-      eventType,
-      userId: user?.uid ?? null,
-      userEmail: user?.email ?? null,
-      createdAt: serverTimestamp(),
-      metadata,
-    }).catch((err) => console.error("Falha ao registrar evento profissional:", err));
+    try {
+      const payload = stripUndefinedDeep({
+        professionalId,
+        eventType,
+        userId: user?.uid ?? null,
+        userEmail: user?.email ?? null,
+        createdAt: serverTimestamp(),
+        metadata: safeMetadata,
+      });
+      addDoc(collection(db, "supportNetworkEvents"), payload).catch((err) =>
+        console.error("Falha ao registrar evento profissional:", err)
+      );
+    } catch (err) {
+      console.error("Falha ao montar payload de evento profissional:", err);
+    }
   };
 
   const trackAdEvent = (
@@ -1268,6 +1707,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   ) => {
     if (!adId) return;
     const statField = eventType === "impression" ? "impressions" : "clicks";
+    const safeMetadata = stripUndefinedDeep(metadata || {});
     setDoc(
       doc(db, "supportAdStats", adId),
       {
@@ -1279,14 +1719,21 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     ).catch((err) => console.error("Falha ao incrementar métrica de anúncio:", err));
 
     const user = auth.currentUser;
-    addDoc(collection(db, "supportAdEvents"), {
-      adId,
-      eventType,
-      userId: user?.uid ?? null,
-      userEmail: user?.email ?? null,
-      createdAt: serverTimestamp(),
-      metadata,
-    }).catch((err) => console.error("Falha ao registrar evento de anúncio:", err));
+    try {
+      const payload = stripUndefinedDeep({
+        adId,
+        eventType,
+        userId: user?.uid ?? null,
+        userEmail: user?.email ?? null,
+        createdAt: serverTimestamp(),
+        metadata: safeMetadata,
+      });
+      addDoc(collection(db, "supportAdEvents"), payload).catch((err) =>
+        console.error("Falha ao registrar evento de anúncio:", err)
+      );
+    } catch (err) {
+      console.error("Falha ao montar payload de evento de anúncio:", err);
+    }
   };
 
   const activeSupportNetworkProfessionals = useMemo(() => {
@@ -1303,8 +1750,12 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       neuroConditions: profile.neuroConditions,
       extraTags: profile.semanticTags,
     });
+    const cpfDigits = String(profile.cpfDigits || profile.cpf || "").replace(/\D/g, "");
+    const phoneDigits = String(profile.phoneDigits || profile.phone || "").replace(/\D/g, "");
     const enrichedProfile: UserProfile = {
       ...profile,
+      cpfDigits: cpfDigits || undefined,
+      phoneDigits: phoneDigits || undefined,
       semanticTags: derived.semanticTags,
       recommendedProfessionalSpecialties: derived.recommendedProfessionalSpecialties,
     };
@@ -1312,7 +1763,15 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     await updateUserDoc(uid, { profile: enrichedProfile });
   };
   const addProfessional = (professionalData: Omit<Professional, "id">) => {
-    const newProfessional: Professional = { ...professionalData, id: `prof-${crypto.randomUUID()}` };
+    const normalizedSpecialties = Array.isArray((professionalData as any).specialties)
+      ? (professionalData as any).specialties.filter((item: any) => typeof item === "string" && item.trim()).map((item: string) => item.trim())
+      : [];
+    const newProfessional: Professional = {
+      ...professionalData,
+      id: `prof-${crypto.randomUUID()}`,
+      specialties: normalizedSpecialties,
+      specialty: normalizedSpecialties[0] || "",
+    };
     setSupportNetworkProfessionals((prev) => [...prev, newProfessional]);
     setDoc(
       doc(db, "supportNetwork", newProfessional.id),
@@ -1322,10 +1781,18 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   };
 
   const updateProfessional = (updatedProfessional: Professional) => {
-    setSupportNetworkProfessionals((prev) => prev.map((p) => (p.id === updatedProfessional.id ? updatedProfessional : p)));
+    const normalizedSpecialties = Array.isArray((updatedProfessional as any).specialties)
+      ? (updatedProfessional as any).specialties.filter((item: any) => typeof item === "string" && item.trim()).map((item: string) => item.trim())
+      : [];
+    const normalizedProfessional: Professional = {
+      ...updatedProfessional,
+      specialties: normalizedSpecialties,
+      specialty: normalizedSpecialties[0] || "",
+    };
+    setSupportNetworkProfessionals((prev) => prev.map((p) => (p.id === normalizedProfessional.id ? normalizedProfessional : p)));
     setDoc(
-      doc(db, "supportNetwork", updatedProfessional.id),
-      { ...updatedProfessional, updatedAt: serverTimestamp() },
+      doc(db, "supportNetwork", normalizedProfessional.id),
+      { ...normalizedProfessional, updatedAt: serverTimestamp() },
       { merge: true }
     ).catch((err) => console.error("Falha ao atualizar profissional:", err));
   };
@@ -1341,8 +1808,18 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   // CRIANÇAS (Firestore)
   // ============================================================
 
-  const addChild = (name: string, avatar: string, birthDate?: string) => {
+  const addChild = (
+    name: string,
+    avatar: string,
+    birthDate?: string,
+    sex?: Child["sex"],
+    extraProfile?: Partial<Child>
+  ) => {
     if (!familyId) return;
+    if (childrenData.length >= MAX_FREEMIUM_PROFILES) {
+      showToast("Plano freemium permite ate 4 perfis (principal + 3 secundarios).", "warning");
+      return;
+    }
     const normalizedName = normalizeChildName(name);
     if (!normalizedName) return;
 
@@ -1355,7 +1832,25 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       habits: [],
       starHistory: {},
       birthDate,
+      sex,
       showAgeInfo: true,
+      fullName: extraProfile?.fullName,
+      preferredName: extraProfile?.preferredName,
+      phone: extraProfile?.phone,
+      phoneDigits: extraProfile?.phoneDigits,
+      shareForProfessionalLink: extraProfile?.shareForProfessionalLink,
+      shareBlocks: extraProfile?.shareBlocks,
+      mainGoals: extraProfile?.mainGoals || [],
+      habitsToBuild: extraProfile?.habitsToBuild || [],
+      habitsToReduce: extraProfile?.habitsToReduce || [],
+      interests: extraProfile?.interests || [],
+      shoppingPreferences: extraProfile?.shoppingPreferences || [],
+      timeGoals: extraProfile?.timeGoals || [],
+      healthComplaints: extraProfile?.healthComplaints || [],
+      neuroConditions: extraProfile?.neuroConditions || [],
+      semanticTags: extraProfile?.semanticTags || [],
+      recommendedProfessionalSpecialties: extraProfile?.recommendedProfessionalSpecialties || [],
+      updatedAt: new Date().toISOString(),
     };
 
     const payload = stripUndefinedDeep({
@@ -1374,14 +1869,41 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     name: string,
     avatar: string,
     birthDate?: string,
-    showAgeInfo?: boolean
+    showAgeInfo?: boolean,
+    sex?: Child["sex"],
+    extraProfile?: Partial<Child>
   ) => {
     const current = childrenData.find((c) => c.id === childId);
     if (!current) return;
     const normalizedName = normalizeChildName(name);
     if (!normalizedName) return;
 
-    const updated: Child = { ...current, name: normalizedName, avatar, birthDate, showAgeInfo };
+    const updated: Child = {
+      ...current,
+      name: normalizedName,
+      avatar,
+      birthDate,
+      showAgeInfo,
+      sex,
+      fullName: extraProfile?.fullName ?? current.fullName,
+      preferredName: extraProfile?.preferredName ?? current.preferredName,
+      phone: extraProfile?.phone ?? current.phone,
+      phoneDigits: extraProfile?.phoneDigits ?? current.phoneDigits,
+      shareForProfessionalLink: extraProfile?.shareForProfessionalLink ?? current.shareForProfessionalLink,
+      shareBlocks: extraProfile?.shareBlocks ?? current.shareBlocks,
+      mainGoals: extraProfile?.mainGoals ?? current.mainGoals ?? [],
+      habitsToBuild: extraProfile?.habitsToBuild ?? current.habitsToBuild ?? [],
+      habitsToReduce: extraProfile?.habitsToReduce ?? current.habitsToReduce ?? [],
+      interests: extraProfile?.interests ?? current.interests ?? [],
+      shoppingPreferences: extraProfile?.shoppingPreferences ?? current.shoppingPreferences ?? [],
+      timeGoals: extraProfile?.timeGoals ?? current.timeGoals ?? [],
+      healthComplaints: extraProfile?.healthComplaints ?? current.healthComplaints ?? [],
+      neuroConditions: extraProfile?.neuroConditions ?? current.neuroConditions ?? [],
+      semanticTags: extraProfile?.semanticTags ?? current.semanticTags ?? [],
+      recommendedProfessionalSpecialties:
+        extraProfile?.recommendedProfessionalSpecialties ?? current.recommendedProfessionalSpecialties ?? [],
+      updatedAt: new Date().toISOString(),
+    };
     saveChild(updated);
   };
 
@@ -1547,7 +2069,8 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       if (habit.id !== habitId) return habit;
 
       const currentStatus = habit.completions[date];
-      if (habit.reward.type === RewardType.STARS) isStarReward = true;
+      const isProfessionalOrientation = habit.source === "qrsaude" || Boolean(habit.prescribedByProfessionalId);
+      if (habit.reward.type === RewardType.STARS && !isProfessionalOrientation) isStarReward = true;
 
       const newCompletions = { ...habit.completions };
 
@@ -1600,13 +2123,14 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     const dayOfWeek = targetDate.getDay();
     const dayOfMonth = targetDate.getDate();
 
-    return child.habits.filter((habit) => {
+    const visibleHabits = child.habits.filter((habit) => {
       if (habit.completions[dateStr] === "SKIPPED") return false;
 
       const scheduleType = habit.schedule.type;
 
       if (scheduleType === "ONCE") return habit.schedule.date === dateStr;
       if (habit.startDate && habit.startDate > dateStr) return false;
+      if (habit.endDate && habit.endDate < dateStr) return false;
 
       switch (scheduleType) {
         case "DAILY":
@@ -1620,13 +2144,40 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
           return !habit.startDate && !scheduleType;
       }
     });
+
+    return visibleHabits.sort((a, b) => {
+      const aProfessional = a.source === "qrsaude" || Boolean(a.prescribedByProfessionalId);
+      const bProfessional = b.source === "qrsaude" || Boolean(b.prescribedByProfessionalId);
+      if (aProfessional !== bProfessional) return aProfessional ? -1 : 1;
+
+      const modeA = a.schedule?.mode || (a.schedule?.time ? "rigid" : "flex");
+      const modeB = b.schedule?.mode || (b.schedule?.time ? "rigid" : "flex");
+
+      if (modeA !== modeB) {
+        return modeA === "rigid" ? -1 : 1;
+      }
+
+      if (modeA === "rigid") {
+        const aMinutes = parseScheduleTimeToMinutes(a.schedule?.time);
+        const bMinutes = parseScheduleTimeToMinutes(b.schedule?.time);
+        if (aMinutes !== null && bMinutes !== null && aMinutes !== bMinutes) return aMinutes - bMinutes;
+        if (aMinutes !== null) return -1;
+        if (bMinutes !== null) return 1;
+      } else {
+        const aRank = getPeriodRank(a.schedule?.period);
+        const bRank = getPeriodRank(b.schedule?.period);
+        if (aRank !== bRank) return aRank - bRank;
+      }
+
+      return a.name.localeCompare(b.name);
+    });
   };
 
   // ============================================================
   // TEMPLATES / LOJA / RECOMPENSAS (mantidos)
   // ============================================================
 
-  const addRoutineTemplate = (templateData: Omit<RoutineTemplate, "id">) => {
+  const addRoutineTemplate = async (templateData: Omit<RoutineTemplate, "id">) => {
     const id = `template-${crypto.randomUUID()}`;
     const newTemplate: RoutineTemplate = {
       ...templateData,
@@ -1648,11 +2199,17 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       updatedAt: serverTimestamp(),
     });
 
-    setDoc(doc(db, "routineTemplatesGlobal", id), payload, { merge: true }).catch(
-      (err) => console.error("Falha ao salvar template:", err)
-    );
+    try {
+      await setDoc(doc(db, "routineTemplatesGlobal", id), payload, { merge: true });
+    } catch (err) {
+      setTemplatesData((prev) => prev.filter((t) => t.id !== id));
+      console.error("Falha ao salvar template:", err);
+      showToast("Falha ao salvar rotina na nuvem. Verifique sua conexão e tente novamente.", "error");
+      throw err;
+    }
   };
-  const updateRoutineTemplate = (template: RoutineTemplate) => {
+  const updateRoutineTemplate = async (template: RoutineTemplate) => {
+    const previousState = templatesData;
     const normalizedTemplate: RoutineTemplate = {
       ...template,
       semanticTags: canonicalizeTags(
@@ -1669,15 +2226,69 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       ...normalizedTemplate,
       updatedAt: serverTimestamp(),
     });
-    setDoc(doc(db, "routineTemplatesGlobal", normalizedTemplate.id), payload, { merge: true }).catch(
-      (err) => console.error("Falha ao atualizar template:", err)
-    );
+    try {
+      await setDoc(doc(db, "routineTemplatesGlobal", normalizedTemplate.id), payload, { merge: true });
+    } catch (err) {
+      setTemplatesData(previousState);
+      console.error("Falha ao atualizar template:", err);
+      showToast("Falha ao atualizar rotina na nuvem. Tente novamente.", "error");
+      throw err;
+    }
   };
-  const deleteRoutineTemplate = (templateId: string) => {
+  const deleteRoutineTemplate = async (templateId: string) => {
+    const previousState = templatesData;
     setTemplatesData((prev) => prev.filter((t) => t.id !== templateId));
-    deleteDoc(doc(db, "routineTemplatesGlobal", templateId)).catch((err) =>
-      console.error("Falha ao excluir template:", err)
-    );
+    try {
+      await deleteDoc(doc(db, "routineTemplatesGlobal", templateId));
+    } catch (err) {
+      setTemplatesData(previousState);
+      console.error("Falha ao excluir template:", err);
+      showToast("Falha ao excluir rotina na nuvem. Tente novamente.", "error");
+      throw err;
+    }
+  };
+
+  const refreshRoutineTemplates = async () => {
+    const templatesRef = collection(db, "routineTemplatesGlobal");
+    try {
+      const snap = await getDocsFromServer(templatesRef);
+      const templates = snap.docs.map((d) => {
+        const data = d.data() as any;
+        return {
+          id: d.id,
+          name: data.name,
+          imageUrl: data.imageUrl,
+          isActive: data.isActive ?? true,
+          areaKey: data.areaKey,
+          areaLabel: data.areaLabel,
+          libraryType: data.libraryType,
+          semanticTags: Array.isArray(data.semanticTags) ? data.semanticTags : undefined,
+          sponsorNote: data.sponsorNote,
+          leftSwipeActionType: data.leftSwipeActionType,
+          leftSwipeActionLabel: data.leftSwipeActionLabel,
+          leftSwipeActionUrl: data.leftSwipeActionUrl,
+          leftSwipeActionWhatsapp: data.leftSwipeActionWhatsapp != null ? String(data.leftSwipeActionWhatsapp) : undefined,
+          uf: data.uf != null ? String(data.uf).trim() : undefined,
+          cityId: data.cityId != null ? String(data.cityId).trim() : undefined,
+          cityName: data.cityName != null ? String(data.cityName).trim() : undefined,
+          icon: data.icon,
+          reward: data.reward,
+          schedule: data.schedule,
+        } as RoutineTemplate;
+      });
+      setTemplatesData(templates);
+      return;
+    } catch (err) {
+      console.warn("Sincronização server-first falhou, tentando REST fallback:", err);
+    }
+
+    try {
+      const restTemplates = await fetchRoutineTemplatesViaRest();
+      setTemplatesData(restTemplates);
+    } catch (err) {
+      console.error("Falha ao sincronizar templates via REST fallback:", err);
+      throw err;
+    }
   };
 
   const addShopReward = (rewardData: Omit<ShopReward, "id">) => {
@@ -1867,6 +2478,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     addRoutineTemplate,
     updateRoutineTemplate,
     deleteRoutineTemplate,
+    refreshRoutineTemplates,
 
     shopRewards: shopRewardsData,
     addShopReward,

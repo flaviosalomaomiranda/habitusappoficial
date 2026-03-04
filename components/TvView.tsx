@@ -6,6 +6,7 @@ import { StarIcon } from './icons/HabitIcons';
 import { TrophyIcon, ChartBarIcon, CheckCircleIcon, UserIcon } from './icons/MiscIcons';
 import RewardShopView from './RewardShopView';
 import TvProgressModal from './TvProgressModal';
+import ChildAvatar from './ChildAvatar';
 
 interface TvViewProps {
     onExitToParent: () => void;
@@ -56,7 +57,12 @@ const TvView: React.FC<TvViewProps> = ({ onExitToParent }) => {
             <header className="flex flex-wrap items-center justify-between gap-3 mb-3">
                 <div className="min-w-0">
                     <div className="flex items-center gap-3">
-                        <span className="text-4xl sm:text-5xl">{activeChild.avatar}</span>
+                        <ChildAvatar
+                            avatar={activeChild.avatar}
+                            alt={activeChild.name}
+                            emojiClassName="text-4xl sm:text-5xl"
+                            imageClassName="w-11 h-11 sm:w-14 sm:h-14 rounded-full object-cover border border-white/40"
+                        />
                         <h1 className="text-2xl sm:text-4xl font-bold tracking-wide truncate">
                             Dia de {activeChild.name}
                             {activeChild.birthDate && (

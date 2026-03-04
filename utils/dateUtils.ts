@@ -62,7 +62,8 @@ export const getAgeGroupFromAge = (age: number): AgeGroup => {
   if (age <= 5) return "3-5";
   if (age < 10) return "6-10"; // 6, 7, 8, 9
   if (age <= 12) return "10-12"; // 10, 11, 12
-  return "13+";
+  if (age <= 17) return "13-17";
+  return "18+";
 };
 
 export const daysUntilNextBirthday = (birthDateString: string): number => {

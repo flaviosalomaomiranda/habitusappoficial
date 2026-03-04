@@ -5,6 +5,7 @@ import { RewardType, RedeemedReward } from '../types';
 import { HABIT_ICONS } from '../constants';
 import { StarIcon } from './icons/HabitIcons';
 import { CheckCircleIcon } from './icons/MiscIcons';
+import ChildAvatar from './ChildAvatar';
 
 interface ProgressDashboardModalProps {
     onClose: () => void;
@@ -49,7 +50,12 @@ const ProgressDashboardModal: React.FC<ProgressDashboardModalProps> = ({ onClose
                     {progressData.map((data) => (
                         <div key={data.id} className="bg-gray-50 p-3 sm:p-4 rounded-lg">
                             <div className="flex items-center gap-3 mb-3">
-                                <span className="text-4xl">{data.avatar}</span>
+                                <ChildAvatar
+                                    avatar={data.avatar}
+                                    alt={data.name}
+                                    emojiClassName="text-4xl"
+                                    imageClassName="w-10 h-10 rounded-full object-cover border border-gray-200"
+                                />
                                 <h3 className="font-bold text-lg sm:text-2xl text-gray-800">{data.name}</h3>
                             </div>
                             

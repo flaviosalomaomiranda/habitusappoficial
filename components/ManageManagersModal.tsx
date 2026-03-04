@@ -129,7 +129,7 @@ const ManageManagersModal: React.FC<ManageManagersModalProps> = ({ onClose }) =>
   }, []);
 
   useEffect(() => {
-    const ufs = Array.from(new Set(managers.map((m) => m.uf).filter(Boolean)));
+    const ufs: string[] = Array.from(new Set(managers.map((m) => m.uf))).filter((uf): uf is string => Boolean(uf));
     if (ufs.length === 0) return;
     const missing = ufs.filter((uf) => !citiesByUf[uf]);
     if (missing.length === 0) return;
@@ -624,7 +624,17 @@ const ManagerForm: React.FC<ManagerFormProps> = ({ manager, onClose }) => {
         <div className="overflow-y-auto pr-2 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <input name="fullName" value={formState.fullName || ""} onChange={handleChange} placeholder="Nome completo" className="p-2 border rounded" />
-            <input name="cpf" value={formState.cpf || ""} onChange={(e) => setFormState((p) => ({ ...p, cpf: formatCpf(e.target.value) }))} placeholder="CPF" inputMode="numeric" className="p-2 border rounded" />
+            <input
+              name="cpf"
+              value={formState.cpf || ""}
+              onChange={(e) => setFormState((p) => ({ ...p, cpf: formatCpf(e.target.value) }))}
+              placeholder="CPF (000.000.000-00)"
+              type="tel"
+              inputMode="numeric"
+              maxLength={14}
+              pattern="\d{3}\.\d{3}\.\d{3}-\d{2}"
+              className="p-2 border rounded"
+            />
             <input name="email" value={formState.email || ""} onChange={handleChange} placeholder="E-mail" className="p-2 border rounded" />
             <input name="whatsapp" value={formState.whatsapp || ""} onChange={(e) => setFormState((p) => ({ ...p, whatsapp: formatPhone(e.target.value) }))} placeholder="WhatsApp" inputMode="numeric" className="p-2 border rounded" />
             <input name="phone" value={formState.phone || ""} onChange={(e) => setFormState((p) => ({ ...p, phone: formatPhone(e.target.value) }))} placeholder="Telefone fixo" inputMode="numeric" className="p-2 border rounded" />

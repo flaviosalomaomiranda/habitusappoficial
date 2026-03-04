@@ -16,6 +16,8 @@ export interface Reward {
 }
 
 export type ScheduleType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'ONCE';
+export type HabitScheduleMode = 'rigid' | 'flex';
+export type HabitFlexPeriod = 'morning' | 'afternoon' | 'night' | 'all_day';
 export type LimitPeriod = 'DAY' | 'WEEK' | 'MONTH' | 'NONE';
 
 export interface RewardLimit {
@@ -25,6 +27,11 @@ export interface RewardLimit {
 
 export interface HabitSchedule {
   type: ScheduleType;
+  mode?: HabitScheduleMode;
+  time?: string; // HH:mm (rotina rígida)
+  period?: HabitFlexPeriod; // manhã/tarde/noite (rotina flexível)
+  reminderEnabled?: boolean;
+  timezone?: string;
   days?: number[]; 
   count?: number; // Usado para o modelo antigo de 'mensal'
   date?: string; // Usado para 'ONCE'
@@ -43,13 +50,22 @@ export type HabitCategory =
   | 'Higiene'
   | 'Emocoes e convivencia';
 
+export type LeftSwipeActionType = 'donation' | 'whatsapp' | 'url';
+
 export interface Habit {
   id: string;
   name:string;
   icon: IconName;
   imageUrl?: string;
   semanticTags?: string[];
+  sponsorNote?: string;
+  leftSwipeActionType?: LeftSwipeActionType;
+  leftSwipeActionLabel?: string;
+  leftSwipeActionUrl?: string;
+  leftSwipeActionWhatsapp?: string;
   source?: "manual" | "template" | "qrsaude";
+  sourceTemplateId?: string;
+  sourceTaskName?: string;
   prescribedByProfessionalId?: string;
   prescribedByProfessionalName?: string;
   prescribedByProfessionalPhotoUrl?: string;
@@ -60,17 +76,41 @@ export interface Habit {
   reward: Reward;
   completions: { [date: string]: HabitCompletionStatus };
   startDate?: string; // Data de início para hábitos recorrentes
+  endDate?: string; // Data final (inclusive) para orientações com duração
+  prescribedDurationDays?: number;
 }
 
 export interface Child {
   id: string;
   name: string;
+  fullName?: string;
+  preferredName?: string;
   avatar: string;
+  sex?: "female" | "male" | "non_binary" | "trans_female" | "trans_male" | "intersex" | "prefer_not_to_say" | "other";
+  phone?: string;
+  phoneDigits?: string;
   stars: number;
   habits: Habit[];
   starHistory: { [date: string]: number };
   birthDate?: string;
   showAgeInfo?: boolean;
+  shareForProfessionalLink?: boolean;
+  shareBlocks?: {
+    personal?: boolean;
+    profile?: boolean;
+    health?: boolean;
+  };
+  mainGoals?: string[];
+  habitsToBuild?: string[];
+  habitsToReduce?: string[];
+  interests?: string[];
+  shoppingPreferences?: string[];
+  timeGoals?: string[];
+  healthComplaints?: string[];
+  neuroConditions?: string[];
+  semanticTags?: string[];
+  recommendedProfessionalSpecialties?: string[];
+  updatedAt?: string;
 }
 
 export interface RoutineTemplate {
@@ -78,7 +118,15 @@ export interface RoutineTemplate {
   name: string;
   imageUrl?: string;
   isActive?: boolean;
+  areaKey?: string;
+  areaLabel?: string;
+  libraryType?: "global" | "sponsored";
   semanticTags?: string[];
+  sponsorNote?: string;
+  leftSwipeActionType?: LeftSwipeActionType;
+  leftSwipeActionLabel?: string;
+  leftSwipeActionUrl?: string;
+  leftSwipeActionWhatsapp?: string;
   uf?: string;
   cityId?: string;
   cityName?: string;
@@ -135,7 +183,22 @@ export type AgeGroup = "0-2" | "3-5" | "6-10" | "10-12" | "13-17" | "18+";
 export type ProfileRole = "kids_teens" | "adults" | "family";
 
 export interface UserProfile {
+  fullName?: string;
+  preferredName?: string;
+  avatar?: string;
+  sex?: "female" | "male" | "non_binary" | "trans_female" | "trans_male" | "intersex" | "prefer_not_to_say" | "other";
+  cpf?: string;
+  cpfDigits?: string;
+  phone?: string;
+  phoneDigits?: string;
+  birthDate?: string;
   city?: FamilyLocation;
+  shareForProfessionalLink?: boolean;
+  shareBlocks?: {
+    personal?: boolean;
+    profile?: boolean;
+    health?: boolean;
+  };
   role?: ProfileRole;
   ageGroups?: AgeGroup[];
   mainGoals?: string[];
@@ -178,7 +241,8 @@ export interface ExclusiveRoutineTemplate {
   diamonds: number;
 }
 
-export type ProfessionalTier = "verified" | "top" | "exclusive" | "master";
+export type ProfessionalTier = "free" | "verified" | "vip" | "top" | "pro" | "exclusive" | "premium" | "master";
+export type ProfessionalPlanType = "FREE" | "VIP" | "PRO" | "PREMIUM" | "MASTER";
 
 export interface Professional {
   id: string;
@@ -233,6 +297,44 @@ export interface Professional {
   galleryUrls?: string[];
   exclusiveRoutines?: ExclusiveRoutineTemplate[];
   semanticTags?: string[];
+
+  // Estrutura de planos e limites operacionais
+  plano?: ProfessionalPlanType;
+  plan_type?: ProfessionalPlanType;
+  pacientes_vinculados_total?: number;
+  pacientes_vinculados_mes?: number;
+  segundos_transcricao_restantes?: number;
+  total_pacientes_vinculados?: number; // FREE: limite vitalício
+  pacientes_mes_atual?: number; // Planos pagos: limite mensal
+  horas_transcricao_restantes?: number; // em segundos
+  status_bloqueio?: boolean;
+  limite_mes_referencia?: string; // YYYY-MM
+  ia_habilitada?: boolean;
+}
+
+export interface ProfessionalPatient {
+  codigo_unico_paciente: string;
+  nome: string;
+  sexo: string;
+  data_nascimento: string;
+  endereco: string;
+  telefone_1_principal: string;
+  telefone_2?: string;
+  familyId?: string;
+  childId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ImmutableClinicalRecord {
+  id?: string;
+  paciente_id: string;
+  professional_id: string;
+  hash_seguranca: string;
+  registro_hash: string;
+  is_immutable: true;
+  created_at_iso: string;
+  payload: Record<string, any>;
 }
 
 export interface Manager {
@@ -290,6 +392,9 @@ export interface Recommendation {
   ageMin?: number | null;
   ageMax?: number | null;
   priority?: number;
+  badgeText?: string;
+  badgeType?: "app_exclusive" | "offer" | "coupon" | "urgency";
+  badgeActive?: boolean;
   placement?: "master" | "hero" | "contextual_footer" | "explore";
   createdAt: string;
   updatedAt: string;

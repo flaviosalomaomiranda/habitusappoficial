@@ -54,4 +54,4 @@ export const getHabitCategoryStyle = (category?: HabitCategory) => {
     return HABIT_CATEGORY_STYLES[category];
 };
 
-export const ANIMAL_EMOJIS: string[] = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🦉', '🐤', '🐠', '🐳', '🦄', '🐝', '🦋', '🐢', '🦖', '🐙', '🦀', '🦒'];
+export const ANIMAL_EMOJIS: string[] = ['🐶', '🐱', '🐻', '🐰', '🦊', '🐼', '🦁', '🐯', '🐸', '🐵', '📅', '🗓️'];

@@ -14,10 +14,97 @@ service cloud.firestore {
         ];
     }
 
+    function requesterEmail() {
+      return request.auth.token.email != null ? request.auth.token.email : "";
+    }
+
+    function isProtectedCollection() {
+      return request.path[3] in [
+        "supportNetwork",
+        "supportNetworkSettings",
+        "routineTemplatesGlobal",
+        "professionalClinicalRecordEntries",
+        "professionalClinicalRecords",
+        "professionalLinkRequests",
+        "professionalPatientLinks",
+        "patients"
+      ];
+    }
+
+    function professionalDocById(professionalId) {
+      return get(/databases/$(database)/documents/supportNetwork/$(professionalId));
+    }
+
+    function professionalDocExists(professionalId) {
+      return exists(/databases/$(database)/documents/supportNetwork/$(professionalId));
+    }
+
+    function resolvePlanType(data) {
+      return (data.plan_type is string && data.plan_type != "")
+        ? data.plan_type
+        : ((data.plano is string && data.plano != "") ? data.plano : "FREE");
+    }
+
+    function lifetimeLinkedCount(data) {
+      return (data.pacientes_vinculados_total is int)
+        ? data.pacientes_vinculados_total
+        : ((data.total_pacientes_vinculados is int) ? data.total_pacientes_vinculados : 0);
+    }
+
+    function isReadOnlyByPlan(professionalId) {
+      let snap = professionalDocById(professionalId);
+      let data = snap.data;
+      let plan = resolvePlanType(data);
+      return professionalDocExists(professionalId)
+        && (plan == "FREE" && lifetimeLinkedCount(data) >= 30);
+    }
+
+    function hasPatientRequiredFields(data) {
+      return data.nome is string
+        && data.sexo is string
+        && data.data_nascimento is string
+        && data.endereco is string
+        && data.telefone_1_principal is string
+        && data.telefone_2 is string;
+    }
+
+    function isProfessionalSelf(professionalId) {
+      let data = professionalDocById(professionalId).data;
+      let email = requesterEmail();
+      return isSignedIn()
+        && (
+          request.auth.uid == professionalId ||
+          (email != ""
+            && (
+              email == data.email ||
+              email == data.professionalEmail ||
+              email == data.contacts.email
+            ))
+        );
+    }
+
+    function isSupportNetworkOperationalUpdateOnly() {
+      return request.writeFields.hasOnly([
+        "plano",
+        "plan_type",
+        "pacientes_vinculados_total",
+        "pacientes_vinculados_mes",
+        "total_pacientes_vinculados",
+        "pacientes_mes_atual",
+        "segundos_transcricao_restantes",
+        "horas_transcricao_restantes",
+        "status_bloqueio",
+        "limite_mes_referencia",
+        "ia_habilitada",
+        "updatedAt"
+      ]);
+    }
+
     // Vitrine pública de profissionais
     match /supportNetwork/{docId} {
       allow read: if true;
-      allow write: if isAdminEmail();
+      allow create, delete: if isAdminEmail();
+      allow update: if isAdminEmail() || (isProfessionalSelf(docId) && isSupportNetworkOperationalUpdateOnly());
     }
 
     // Configurações públicas de vitrine/preços (somente leitura no app cliente)
@@ -32,9 +119,68 @@ service cloud.firestore {
       allow write: if isAdminEmail();
     }
 
-    // Demais coleções do app exigem autenticação
+    // Prontuário clínico principal: bloqueia edição quando plano FREE está em modo leitura.
+    match /professionalClinicalRecords/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.professionalId is string
+        && !isReadOnlyByPlan(request.resource.data.professionalId);
+      allow update: if isSignedIn()
+        && resource.data.professionalId is string
+        && request.resource.data.professionalId == resource.data.professionalId
+        && !isReadOnlyByPlan(resource.data.professionalId);
+      allow delete: if isAdminEmail();
+    }
+
+    // Entradas imutáveis de prontuário: somente criação; update/delete bloqueados.
+    match /professionalClinicalRecordEntries/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.professional_id is string
+        && request.resource.data.paciente_id is string
+        && request.resource.data.registro_hash is string
+        && request.resource.data.hash_seguranca is string
+        && request.resource.data.is_immutable == true
+        && !isReadOnlyByPlan(request.resource.data.professional_id);
+      allow update, delete: if false;
+    }
+
+    // Solicitações de vínculo: impede criação/aprovação quando limite de novos foi atingido.
+    match /professionalLinkRequests/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.professionalId is string;
+      allow update: if isSignedIn()
+        && request.resource.data.professionalId is string;
+      allow delete: if isAdminEmail();
+    }
+
+    // Vínculo ativo do paciente: impede ativação/criação de novo vínculo quando limite foi atingido.
+    match /professionalPatientLinks/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.professionalId is string;
+      allow update: if isSignedIn()
+        && request.resource.data.professionalId is string;
+      allow delete: if isAdminEmail();
+    }
+
+    // Cadastro base do paciente com código único estável.
+    match /patients/{patientId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.codigo_unico_paciente == patientId
+        && hasPatientRequiredFields(request.resource.data);
+      allow update: if isSignedIn()
+        && resource.data.codigo_unico_paciente == patientId
+        && request.resource.data.codigo_unico_paciente == patientId
+        && hasPatientRequiredFields(request.resource.data);
+      allow delete: if isAdminEmail();
+    }
+
+    // Demais coleções do app exigem autenticação, exceto coleções protegidas acima.
     match /{document=**} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && !isProtectedCollection();
     }
   }
 }

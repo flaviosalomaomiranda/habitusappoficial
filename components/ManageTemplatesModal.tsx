@@ -11,9 +11,11 @@ interface ManageTemplatesModalProps {
 }
 
 const ManageTemplatesModal: React.FC<ManageTemplatesModalProps> = ({ onClose, embedded = false }) => {
-  const { routineTemplates } = useAppContext();
+  const { routineTemplates, refreshRoutineTemplates } = useAppContext();
   const [editingTemplate, setEditingTemplate] = useState<RoutineTemplate | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const handleEdit = (template: RoutineTemplate) => {
     setEditingTemplate(template);
@@ -30,17 +32,46 @@ const ManageTemplatesModal: React.FC<ManageTemplatesModalProps> = ({ onClose, em
     setEditingTemplate(null);
   };
 
+  const handleSyncNow = async () => {
+    try {
+      setIsSyncing(true);
+      setSyncMessage(null);
+      await refreshRoutineTemplates();
+      setSyncMessage("Rotinas sincronizadas com sucesso.");
+    } catch {
+      setSyncMessage("Não foi possível sincronizar agora.");
+    } finally {
+      setIsSyncing(false);
+      window.setTimeout(() => setSyncMessage(null), 2500);
+    }
+  };
+
   return (
     <>
     <div className={embedded ? "w-full" : "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"}>
       <div className={`bg-white rounded-lg shadow-xl p-8 w-full max-w-2xl m-4 flex flex-col ${embedded ? "mx-auto my-0" : ""}`} style={{ maxHeight: embedded ? 'calc(100vh - 140px)' : '90vh' }}>
         <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold">Gerenciar Rotinas</h2>
-            <button onClick={handleAddNew} className="bg-green-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors">
-                <PlusIcon />
-                Novo Modelo
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => { void handleSyncNow(); }}
+                disabled={isSyncing}
+                className="bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 disabled:opacity-60 transition-colors"
+              >
+                {isSyncing ? "Sincronizando..." : "Sincronizar agora"}
+              </button>
+              <button onClick={handleAddNew} className="bg-green-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors">
+                  <PlusIcon />
+                  Novo Modelo
+              </button>
+            </div>
         </div>
+        {syncMessage && (
+          <p className={`-mt-3 mb-3 text-sm font-semibold ${syncMessage.includes("sucesso") ? "text-emerald-700" : "text-rose-700"}`}>
+            {syncMessage}
+          </p>
+        )}
 
         <div className="flex-grow overflow-y-auto pr-4 -mr-4 space-y-3">
            {routineTemplates.length > 0 ? routineTemplates.map(template => {
@@ -57,6 +88,9 @@ const ManageTemplatesModal: React.FC<ManageTemplatesModalProps> = ({ onClose, em
                             <div>
                                 <span className="text-lg font-medium">{template.name}</span>
                                 <p className="text-sm text-gray-500">{template.isActive === false ? 'Inativo' : 'Ativo'}</p>
+                                <p className="text-xs text-gray-500">
+                                  Área: {template.areaLabel || template.areaKey || 'Não definida'} • {template.libraryType === 'sponsored' ? 'Patrocinada' : 'Global'}
+                                </p>
                                 <p className="text-xs text-gray-400">
                                   {template.uf && template.cityName ? `${template.uf} - ${template.cityName}` : 'Global (todos os locais)'}
                                 </p>

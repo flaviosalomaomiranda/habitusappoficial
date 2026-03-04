@@ -6,6 +6,7 @@ import { HABIT_ICONS, getHabitCategoryStyle } from '../constants';
 import { StarIcon } from './icons/HabitIcons';
 import { CheckCircleIcon, UserIcon } from './icons/MiscIcons';
 import { Child } from '../types';
+import ChildAvatar from './ChildAvatar';
 
 interface ChildViewProps {
     child: Child;
@@ -21,7 +22,12 @@ const ChildView: React.FC<ChildViewProps> = ({ child, onSwitchToParent }) => {
         <div className="min-h-screen bg-gradient-to-br from-purple-500 to-violet-600 text-white p-4 sm:p-8 flex flex-col">
             <header className="flex justify-between items-center mb-8">
                 <div className="flex items-center gap-4">
-                    <span className="text-6xl">{child.avatar}</span>
+                    <ChildAvatar
+                        avatar={child.avatar}
+                        alt={child.name}
+                        emojiClassName="text-6xl"
+                        imageClassName="w-16 h-16 rounded-full object-cover border border-white/40"
+                    />
                     <div>
                         <h1 className="text-4xl sm:text-5xl font-bold tracking-wide">Olá, {child.name}!</h1>
                         <p className="text-xl text-white/80">Estas são suas missões de hoje:</p>

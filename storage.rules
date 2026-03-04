@@ -22,6 +22,14 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    // Retrocompatibilidade (uploads antigos com caminho /photos)
+    match /support-network/photos/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin()
+        && request.resource.size <= 1500000
+        && request.resource.contentType.matches('image/.*');
+    }
+
     match /support-network/gallery/{allPaths=**} {
       allow read: if true;
       allow write: if isAdmin()
@@ -49,6 +57,14 @@ service firebase.storage {
       allow read: if true;
       allow write: if isAdmin()
         && request.resource.size <= 1500000
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Avatares personalizados de pessoas da familia
+    match /families/{familyId}/children-avatars/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if signedIn()
+        && request.resource.size <= 1000000
         && request.resource.contentType.matches('image/.*');
     }
 

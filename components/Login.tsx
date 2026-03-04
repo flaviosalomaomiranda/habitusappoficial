@@ -8,6 +8,9 @@ import {
 import { auth } from "@/src/lib/firebase";
 
 export default function Login() {
+  const isProfessionalRoute =
+    typeof window !== "undefined" &&
+    window.location.pathname.replace(/\/+$/, "").toLowerCase() === "/professional";
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -45,12 +48,23 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow p-6">
-        <h1 className="text-2xl font-bold text-gray-800">Habitus</h1>
+    <div className={`min-h-screen flex items-center justify-center p-4 ${isProfessionalRoute ? "bg-gradient-to-br from-purple-900 via-purple-700 to-fuchsia-700" : "bg-gray-50"}`}>
+      <div className={`w-full max-w-md rounded-2xl shadow p-6 ${isProfessionalRoute ? "bg-white/95 border border-white/40" : "bg-white"}`}>
+        <h1 className={`text-2xl font-bold ${isProfessionalRoute ? "text-purple-900" : "text-gray-800"}`}>
+          {isProfessionalRoute ? "Habitus Profissional" : "Habitus"}
+        </h1>
         <p className="text-sm text-gray-500 mt-1">
-          {mode === "login" ? "Entrar na conta" : "Criar conta"}
+          {isProfessionalRoute
+            ? "Acesso exclusivo para profissionais cadastrados"
+            : mode === "login"
+              ? "Entrar na conta"
+              : "Criar conta"}
         </p>
+        {isProfessionalRoute && (
+          <div className="mt-3 text-xs rounded-xl border border-purple-200 bg-purple-50 text-purple-800 px-3 py-2">
+            Nesta tela não é possível criar conta. Use o e-mail profissional já liberado no Admin.
+          </div>
+        )}
 
         <form onSubmit={handleEmailAuth} className="mt-6 space-y-3">
           <input
@@ -79,34 +93,38 @@ export default function Login() {
 
           <button
             disabled={loading}
-            className="w-full bg-purple-600 hover:bg-purple-700 text-white rounded-xl p-3 font-semibold disabled:opacity-60"
+            className={`w-full text-white rounded-xl p-3 font-semibold disabled:opacity-60 ${isProfessionalRoute ? "bg-purple-800 hover:bg-purple-900" : "bg-purple-600 hover:bg-purple-700"}`}
           >
-            {loading ? "Aguarde..." : mode === "login" ? "Entrar" : "Criar conta"}
+            {loading ? "Aguarde..." : isProfessionalRoute || mode === "login" ? "Entrar" : "Criar conta"}
           </button>
         </form>
 
-        <div className="mt-4 flex items-center gap-3">
-          <div className="h-px bg-gray-200 flex-1" />
-          <span className="text-xs text-gray-400">ou</span>
-          <div className="h-px bg-gray-200 flex-1" />
-        </div>
+        {!isProfessionalRoute && (
+          <>
+            <div className="mt-4 flex items-center gap-3">
+              <div className="h-px bg-gray-200 flex-1" />
+              <span className="text-xs text-gray-400">ou</span>
+              <div className="h-px bg-gray-200 flex-1" />
+            </div>
 
-        <button
-          onClick={handleGoogle}
-          disabled={loading}
-          className="mt-4 w-full border rounded-xl p-3 font-semibold hover:bg-gray-50 disabled:opacity-60"
-        >
-          Entrar com Google
-        </button>
+            <button
+              onClick={handleGoogle}
+              disabled={loading}
+              className="mt-4 w-full border rounded-xl p-3 font-semibold hover:bg-gray-50 disabled:opacity-60"
+            >
+              Entrar com Google
+            </button>
 
-        <button
-          onClick={() => setMode((m) => (m === "login" ? "signup" : "login"))}
-          className="mt-4 w-full text-sm text-purple-700 hover:underline"
-        >
-          {mode === "login"
-            ? "Não tem conta? Criar agora"
-            : "Já tem conta? Entrar"}
-        </button>
+            <button
+              onClick={() => setMode((m) => (m === "login" ? "signup" : "login"))}
+              className="mt-4 w-full text-sm text-purple-700 hover:underline"
+            >
+              {mode === "login"
+                ? "Não tem conta? Criar agora"
+                : "Já tem conta? Entrar"}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

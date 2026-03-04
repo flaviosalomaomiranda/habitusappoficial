@@ -72,7 +72,11 @@ const ManageTagCatalogModal: React.FC<ManageTagCatalogModalProps> = ({ onClose, 
   const topLocalTags = useMemo(() => {
     const counter = new Map<string, number>();
     filteredProfiles.forEach((p) => {
-      const unique = new Set((p.semanticTags || []).map((t) => normalizeTag(t)).filter(Boolean));
+      const unique = new Set<string>(
+        (p.semanticTags || [])
+          .map((t) => normalizeTag(String(t)))
+          .filter((tag): tag is string => Boolean(tag))
+      );
       unique.forEach((tag) => counter.set(tag, (counter.get(tag) || 0) + 1));
     });
     return Array.from(counter.entries())
