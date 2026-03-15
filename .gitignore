@@ -30,4 +30,9 @@ pnpm-debug.log*
 .tools/
 functions/node_modules/
 .tmp-*.zip
+scripts/esus-dentista-helper.zip
+standalone/*
+!standalone/esus-platform-backend/
+!standalone/esus-platform-backend/**
+standalone/esus-platform-backend/functions/node_modules/
 
