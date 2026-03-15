@@ -34,3 +34,9 @@ Plataforma multi-tenant para:
 - Consentimento por paciente para canal (WhatsApp/Telegram).
 - Registro de versão/termo/data/usuário responsável.
 - Auditoria de quem viu, enviou, alterou, exportou.
+
+## 7) Documentos de execução (MVP)
+- Schema detalhado: `docs/supabase/mvp_schema.sql`
+- Contrato de API preditiva: `docs/predictive-api-contract.md`
+- Mapa de telas web admin: `docs/admin-web-screen-map.md`
+- Plano de implementação por sprint: `docs/mvp-implementation-plan.md`

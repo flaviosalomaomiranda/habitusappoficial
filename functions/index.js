@@ -2,6 +2,7 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { Resend } = require("resend");
 const messaging = require("./messaging");
+const predictive = require("./predictive");
 
 admin.initializeApp();
 
@@ -788,3 +789,4 @@ exports.processAnamnesisAudio = functions
 
 exports.messagingApi = messaging.messagingApi;
 exports.processQueuedMessages = messaging.processQueuedMessages;
+exports.predictiveApi = predictive.predictiveApi;
