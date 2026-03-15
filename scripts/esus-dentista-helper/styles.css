@@ -1,0 +1,177 @@
+.dh-tab-btn {
+  border: 1px solid #c7cfdb;
+  border-bottom: 0;
+  background: #f3f6fb;
+  color: #1f2a44;
+  font-weight: 600;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.dh-tab-btn:hover {
+  background: #e8eef8;
+}
+
+.dh-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.38);
+  z-index: 999999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.dh-overlay.open {
+  display: flex;
+}
+
+.dh-modal {
+  width: min(980px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #d6deea;
+  box-shadow: 0 18px 38px rgba(4, 24, 58, 0.24);
+}
+
+.dh-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e8edf5;
+}
+
+.dh-title {
+  margin: 0;
+  font-size: 18px;
+  color: #12315f;
+  text-decoration: none;
+}
+
+.dh-close {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.dh-body {
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+  max-height: 78vh;
+  overflow: auto;
+}
+
+.dh-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.dh-card {
+  border: 1px solid #e2e9f4;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f9fbff;
+}
+
+.dh-card h4 {
+  margin: 0 0 8px;
+  color: #16396c;
+}
+
+.dh-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.dh-row input[type="number"],
+.dh-row input[type="text"],
+.dh-row select,
+.dh-row textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #c8d4e4;
+  border-radius: 6px;
+}
+
+.dh-row textarea {
+  min-height: 64px;
+  resize: vertical;
+}
+
+.dh-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dh-btn {
+  border: 1px solid #1f5fbf;
+  background: #2e73dd;
+  color: #fff;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dh-btn.secondary {
+  background: #fff;
+  color: #1e4f97;
+}
+
+.dh-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-left: 6px;
+}
+
+.dh-risk-baixo {
+  background: #dcf5e3;
+  color: #145527;
+}
+
+.dh-risk-moderado {
+  background: #fff3d7;
+  color: #7f5300;
+}
+
+.dh-risk-alto {
+  background: #fde0df;
+  color: #8f1e1b;
+}
+
+.dh-allergy-alert {
+  background: #ffdede;
+  color: #8f1e1b;
+}
+
+.dh-allergy-clear {
+  background: #e6f0ff;
+  color: #1a3f7a;
+}
+
+.dh-help {
+  margin: 0;
+  color: #496188;
+  font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  .dh-grid {
+    grid-template-columns: 1fr;
+  }
+}

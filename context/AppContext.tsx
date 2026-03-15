@@ -1070,8 +1070,9 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   }, []);
 
   /** ? Helper pra salvar child (merge) */
-  const saveChild = (child: Child) => {
+  const saveChild = (child: Child, options?: { syncReminders?: boolean }) => {
     if (!familyId) return;
+    const syncReminders = options?.syncReminders ?? true;
     const payload = stripUndefinedDeep({
       ...child,
       updatedAt: serverTimestamp(),
@@ -1080,6 +1081,8 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     void setDoc(doc(db, "families", familyId, "children", child.id), payload, { merge: true }).catch(
       (err) => console.error("Falha ao salvar child:", err)
     );
+
+    if (!syncReminders) return;
 
     void (async () => {
       try {
@@ -1492,11 +1495,8 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
   };
 
   const replaceProductRecommendations = async (recommendations: Recommendation[]) => {
-    const batch = writeBatch(db);
     const colRef = collection(db, "productRecommendations");
     const existing = await getDocs(colRef);
-    existing.docs.forEach((docSnap) => batch.delete(docSnap.ref));
-
     const now = new Date().toISOString();
     const normalized = recommendations.map((rec) => {
       const id = rec.id || `prod-${crypto.randomUUID()}`;
@@ -1522,11 +1522,32 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
         updatedAt: serverTimestamp(),
         updatedByEmail: auth.currentUser?.email ?? null,
       });
-      batch.set(doc(db, "productRecommendations", id), payload);
-      return next;
+      return { recommendation: next, payload, id };
     });
-    await batch.commit();
-    setProductRecommendations(normalized);
+
+    const operations: Array<{ type: "delete" | "set"; ref: any; payload?: any }> = [];
+    existing.docs.forEach((docSnap) => {
+      operations.push({ type: "delete", ref: docSnap.ref });
+    });
+    normalized.forEach(({ id, payload }) => {
+      operations.push({ type: "set", ref: doc(db, "productRecommendations", id), payload });
+    });
+
+    const FIRESTORE_BATCH_LIMIT = 500;
+    for (let i = 0; i < operations.length; i += FIRESTORE_BATCH_LIMIT) {
+      const slice = operations.slice(i, i + FIRESTORE_BATCH_LIMIT);
+      const batch = writeBatch(db);
+      slice.forEach((op) => {
+        if (op.type === "delete") {
+          batch.delete(op.ref);
+        } else {
+          batch.set(op.ref, op.payload);
+        }
+      });
+      await batch.commit();
+    }
+
+    setProductRecommendations(normalized.map((item) => item.recommendation));
   };
 
   const tagSuggestionThreshold = useMemo(() => {
@@ -1777,10 +1798,15 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       doc(db, "supportNetwork", newProfessional.id),
       { ...newProfessional, updatedAt: serverTimestamp() },
       { merge: true }
-    ).catch((err) => console.error("Falha ao salvar profissional:", err));
+    ).catch((err) => {
+      setSupportNetworkProfessionals((prev) => prev.filter((p) => p.id !== newProfessional.id));
+      console.error("Falha ao salvar profissional:", err);
+      showToast("Falha ao salvar profissional. Tente novamente.", "error");
+    });
   };
 
   const updateProfessional = (updatedProfessional: Professional) => {
+    const previous = supportNetworkProfessionals.find((p) => p.id === updatedProfessional.id);
     const normalizedSpecialties = Array.isArray((updatedProfessional as any).specialties)
       ? (updatedProfessional as any).specialties.filter((item: any) => typeof item === "string" && item.trim()).map((item: string) => item.trim())
       : [];
@@ -1794,14 +1820,25 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
       doc(db, "supportNetwork", normalizedProfessional.id),
       { ...normalizedProfessional, updatedAt: serverTimestamp() },
       { merge: true }
-    ).catch((err) => console.error("Falha ao atualizar profissional:", err));
+    ).catch((err) => {
+      if (previous) {
+        setSupportNetworkProfessionals((prev) =>
+          prev.map((p) => (p.id === previous.id ? previous : p))
+        );
+      }
+      console.error("Falha ao atualizar profissional:", err);
+      showToast("Falha ao atualizar profissional. Tente novamente.", "error");
+    });
   };
 
   const deleteProfessional = (professionalId: string) => {
+    const previous = supportNetworkProfessionals;
     setSupportNetworkProfessionals((prev) => prev.filter((p) => p.id !== professionalId));
-    deleteDoc(doc(db, "supportNetwork", professionalId)).catch((err) =>
-      console.error("Falha ao excluir profissional:", err)
-    );
+    deleteDoc(doc(db, "supportNetwork", professionalId)).catch((err) => {
+      setSupportNetworkProfessionals(previous);
+      console.error("Falha ao excluir profissional:", err);
+      showToast("Falha ao excluir profissional. Tente novamente.", "error");
+    });
   };
 
   // ============================================================
@@ -1954,42 +1991,41 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     habitData: Omit<Habit, "id" | "completions">
   ): string[] => {
     const addedToChildIds: string[] = [];
+    const childrenToPersist: Child[] = [];
+    const nextChildren = childrenData.map((child) => {
+      if (!childIds.includes(child.id)) return child;
 
-    setChildrenData((prevChildren) => {
-      const next = prevChildren.map((child) => {
-        if (!childIds.includes(child.id)) return child;
+      const exists = child.habits.some(
+        (h) => h.name.trim().toLowerCase() === habitData.name.trim().toLowerCase()
+      );
+      if (exists) return child;
 
-        const exists = child.habits.some(
-          (h) => h.name.trim().toLowerCase() === habitData.name.trim().toLowerCase()
-        );
-        if (exists) return child;
+      addedToChildIds.push(child.id);
 
-        addedToChildIds.push(child.id);
-
-        const inferredTags = canonicalizeTags(
-          normalizeTags(
-            habitData.semanticTags && habitData.semanticTags.length > 0
-              ? habitData.semanticTags
-              : [...inferSemanticTags(habitData.name, habitData.category), ...extractFreeTextTags(habitData.name)]
-          ),
-          tagTaxonomy.synonyms
-        );
-        const newHabit: Habit = {
-          ...habitData,
-          id: `habit-${crypto.randomUUID()}`,
-          completions: {},
-          semanticTags: inferredTags,
-          source: habitData.source || "manual",
-        };
-        const updatedChild: Child = { ...child, habits: [...child.habits, newHabit] };
-
-        // salva no Firestore
-        saveChild(updatedChild);
-
-        return updatedChild;
-      });
-      return next;
+      const inferredTags = canonicalizeTags(
+        normalizeTags(
+          habitData.semanticTags && habitData.semanticTags.length > 0
+            ? habitData.semanticTags
+            : [...inferSemanticTags(habitData.name, habitData.category), ...extractFreeTextTags(habitData.name)]
+        ),
+        tagTaxonomy.synonyms
+      );
+      const newHabit: Habit = {
+        ...habitData,
+        id: `habit-${crypto.randomUUID()}`,
+        completions: {},
+        semanticTags: inferredTags,
+        source: habitData.source || "manual",
+      };
+      const updatedChild: Child = { ...child, habits: [...child.habits, newHabit] };
+      childrenToPersist.push(updatedChild);
+      return updatedChild;
     });
+
+    if (addedToChildIds.length === 0) return addedToChildIds;
+
+    setChildrenData(nextChildren);
+    childrenToPersist.forEach((child) => saveChild(child));
 
     return addedToChildIds;
   };
@@ -2016,7 +2052,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     };
 
     setChildrenData((prev) => prev.map((c) => (c.id === childId ? updatedChild : c)));
-    saveChild(updatedChild);
+    saveChild(updatedChild, { syncReminders: false });
   };
 
   const requestHabitCompletion = (childId: string, habitId: string, date: string) => {
@@ -2033,7 +2069,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     };
 
     setChildrenData((prev) => prev.map((c) => (c.id === childId ? updatedChild : c)));
-    saveChild(updatedChild);
+    saveChild(updatedChild, { syncReminders: false });
   };
 
   const rejectHabitCompletion = (childId: string, habitId: string, date: string) => {
@@ -2053,7 +2089,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     };
 
     setChildrenData((prev) => prev.map((c) => (c.id === childId ? updatedChild : c)));
-    saveChild(updatedChild);
+    saveChild(updatedChild, { syncReminders: false });
   };
 
   const toggleHabitCompletion = (childId: string, habitId: string, date: string) => {
@@ -2108,7 +2144,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     };
 
     setChildrenData((prev) => prev.map((c) => (c.id === childId ? updatedChild : c)));
-    saveChild(updatedChild);
+    saveChild(updatedChild, { syncReminders: false });
     if (semanticTagsDelta !== 0 && semanticTagsForHabit.length > 0) {
       const nextScores = bumpTagScores(settings.semanticTagScores, semanticTagsForHabit, semanticTagsDelta);
       saveSemanticTagScores(nextScores);
@@ -2366,7 +2402,7 @@ export const AppProvider = ({ children }: PropsWithChildren) => {
     const updatedChild: Child = { ...childToUpdate, stars: childToUpdate.stars - reward.cost };
 
     setChildrenData((prev) => prev.map((c) => (c.id === childId ? updatedChild : c)));
-    saveChild(updatedChild); // ✅ agora também persiste
+    saveChild(updatedChild, { syncReminders: false }); // ✅ agora também persiste
 
     const newRedemption: RedeemedReward = {
       id: `redeemed-${crypto.randomUUID()}`,

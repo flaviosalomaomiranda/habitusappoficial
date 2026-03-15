@@ -5,38 +5,29 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isAdminEmail() {
-      return isSignedIn()
-        && request.auth.token.email != null
-        && request.auth.token.email in [
-          "ndsuporte1@gmail.com",
-          "dr.flaviosalomao@hotmail.com"
-        ];
-    }
-
     function requesterEmail() {
-      return request.auth.token.email != null ? request.auth.token.email : "";
+      return isSignedIn() && request.auth.token.email != null
+        ? request.auth.token.email
+        : "";
     }
 
-    function isProtectedCollection() {
-      return request.path[3] in [
-        "supportNetwork",
-        "supportNetworkSettings",
-        "routineTemplatesGlobal",
-        "professionalClinicalRecordEntries",
-        "professionalClinicalRecords",
-        "professionalLinkRequests",
-        "professionalPatientLinks",
-        "patients"
+    function isAdminEmail() {
+      return requesterEmail() in [
+        "ndsuporte1@gmail.com",
+        "dr.flaviosalomao@hotmail.com"
       ];
     }
 
-    function professionalDocById(professionalId) {
-      return get(/databases/$(database)/documents/supportNetwork/$(professionalId));
+    function professionalDocPath(professionalId) {
+      return /databases/$(database)/documents/supportNetwork/$(professionalId);
     }
 
     function professionalDocExists(professionalId) {
-      return exists(/databases/$(database)/documents/supportNetwork/$(professionalId));
+      return exists(professionalDocPath(professionalId));
+    }
+
+    function professionalDocById(professionalId) {
+      return get(professionalDocPath(professionalId));
     }
 
     function resolvePlanType(data) {
@@ -51,12 +42,41 @@ service cloud.firestore {
         : ((data.total_pacientes_vinculados is int) ? data.total_pacientes_vinculados : 0);
     }
 
+    function monthlyLinkedCount(data) {
+      return (data.pacientes_vinculados_mes is int)
+        ? data.pacientes_vinculados_mes
+        : ((data.pacientes_mes_atual is int) ? data.pacientes_mes_atual : 0);
+    }
+
+    function monthlyLimitForPlan(plan) {
+      return plan == "VIP"
+        ? 100
+        : (plan == "PRO"
+          ? 300
+          : ((plan == "PREMIUM" || plan == "MASTER") ? 500 : -1));
+    }
+
     function isReadOnlyByPlan(professionalId) {
-      let snap = professionalDocById(professionalId);
-      let data = snap.data;
+      let data = professionalDocById(professionalId).data;
       let plan = resolvePlanType(data);
       return professionalDocExists(professionalId)
         && (plan == "FREE" && lifetimeLinkedCount(data) >= 30);
+    }
+
+    function isNewPatientBlockedByPlan(professionalId) {
+      let data = professionalDocById(professionalId).data;
+      let plan = resolvePlanType(data);
+      let monthlyLimit = monthlyLimitForPlan(plan);
+      return professionalDocExists(professionalId)
+        && monthlyLimit >= 0
+        && monthlyLinkedCount(data) >= monthlyLimit;
+    }
+
+    function canCreateNewPatients(professionalId) {
+      return isProfessionalSelf(professionalId)
+        && professionalDocExists(professionalId)
+        && !isReadOnlyByPlan(professionalId)
+        && !isNewPatientBlockedByPlan(professionalId);
     }
 
     function hasPatientRequiredFields(data) {
@@ -69,7 +89,9 @@ service cloud.firestore {
     }
 
     function isProfessionalSelf(professionalId) {
-      let data = professionalDocById(professionalId).data;
+      let data = professionalDocExists(professionalId)
+        ? professionalDocById(professionalId).data
+        : {};
       let email = requesterEmail();
       return isSignedIn()
         && (
@@ -80,6 +102,86 @@ service cloud.firestore {
               email == data.professionalEmail ||
               email == data.contacts.email
             ))
+        );
+    }
+
+    function isRegisteredProfessional() {
+      return isSignedIn() && professionalDocExists(request.auth.uid);
+    }
+
+    function familyMemberPath(familyId, uid) {
+      return /databases/$(database)/documents/families/$(familyId)/members/$(uid);
+    }
+
+    function isFamilyMember(familyId) {
+      return isSignedIn()
+        && familyId is string
+        && exists(familyMemberPath(familyId, request.auth.uid));
+    }
+
+    function familyMemberData(familyId) {
+      return get(familyMemberPath(familyId, request.auth.uid)).data;
+    }
+
+    function isFamilyOwner(familyId) {
+      return isFamilyMember(familyId)
+        && familyMemberData(familyId).role == "owner";
+    }
+
+    function canManageFamilyMembers(familyId) {
+      return isFamilyMember(familyId)
+        && (
+          familyMemberData(familyId).role == "owner" ||
+          familyMemberData(familyId).role == "responsible"
+        );
+    }
+
+    function canWriteFamilyChildren(familyId) {
+      return isFamilyMember(familyId)
+        && (
+          familyMemberData(familyId).canEditChildren == true ||
+          familyMemberData(familyId).canEditHabits == true ||
+          familyMemberData(familyId).canMarkHabits == true
+        );
+    }
+
+    function canWriteFamilySettings(familyId) {
+      return isFamilyMember(familyId)
+        && (
+          canManageFamilyMembers(familyId) ||
+          familyMemberData(familyId).canEditChildren == true ||
+          familyMemberData(familyId).canEditHabits == true
+        );
+    }
+
+    function professionalLinkPath(familyId, professionalId) {
+      return /databases/$(database)/documents/professionalPatientLinks/$(professionalId + "__" + familyId);
+    }
+
+    function hasActiveProfessionalLinkToFamily(familyId, professionalId) {
+      let path = professionalLinkPath(familyId, professionalId);
+      return familyId is string
+        && professionalId is string
+        && exists(path)
+        && get(path).data.status == "active"
+        && (
+          !(get(path).data.linkExpiresAtMs is int) ||
+          get(path).data.linkExpiresAtMs > request.time.toMillis()
+        );
+    }
+
+    function isLinkedProfessionalForFamily(familyId) {
+      return isSignedIn() && hasActiveProfessionalLinkToFamily(familyId, request.auth.uid);
+    }
+
+    function isUserVisibleToRequester(data, uid) {
+      return isAdminEmail()
+        || uid == request.auth.uid
+        || (data.familyId is string && isFamilyMember(data.familyId))
+        || (data.familyId is string && isLinkedProfessionalForFamily(data.familyId))
+        || (
+          isRegisteredProfessional()
+          && data.profile.shareForProfessionalLink == true
         );
     }
 
@@ -100,26 +202,150 @@ service cloud.firestore {
       ]);
     }
 
-    // Vitrine pública de profissionais
     match /supportNetwork/{docId} {
       allow read: if true;
       allow create, delete: if isAdminEmail();
       allow update: if isAdminEmail() || (isProfessionalSelf(docId) && isSupportNetworkOperationalUpdateOnly());
     }
 
-    // Configurações públicas de vitrine/preços (somente leitura no app cliente)
     match /supportNetworkSettings/{docId} {
       allow read: if true;
       allow write: if isAdminEmail();
     }
 
-    // Modelos globais de rotina definidos pelo admin
     match /routineTemplatesGlobal/{docId} {
       allow read: if true;
       allow write: if isAdminEmail();
     }
 
-    // Prontuário clínico principal: bloqueia edição quando plano FREE está em modo leitura.
+    match /users/{uid} {
+      allow read: if isSignedIn() && isUserVisibleToRequester(resource.data, uid);
+      allow create: if isSignedIn() && uid == request.auth.uid;
+      allow update, delete: if isSignedIn() && uid == request.auth.uid;
+    }
+
+    match /userDirectory/{uid} {
+      allow read: if isAdminEmail() || (isSignedIn() && uid == request.auth.uid);
+      allow create, update, delete: if isAdminEmail() || (isSignedIn() && uid == request.auth.uid);
+    }
+
+    match /families/{familyId} {
+      allow read: if isFamilyMember(familyId) || isLinkedProfessionalForFamily(familyId) || isAdminEmail();
+      allow create: if isSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isFamilyOwner(familyId) || isAdminEmail();
+      allow delete: if isAdminEmail();
+
+      match /members/{uid} {
+        allow read: if isFamilyMember(familyId) || isAdminEmail();
+        allow create: if isAdminEmail()
+          || canManageFamilyMembers(familyId)
+          || (isSignedIn() && uid == request.auth.uid);
+        allow update: if isAdminEmail()
+          || canManageFamilyMembers(familyId)
+          || (isSignedIn() && uid == request.auth.uid);
+        allow delete: if isAdminEmail()
+          || canManageFamilyMembers(familyId)
+          || (isSignedIn() && uid == request.auth.uid);
+      }
+
+      match /children/{childId} {
+        allow read: if isFamilyMember(familyId) || isLinkedProfessionalForFamily(familyId) || isAdminEmail();
+        allow write: if canWriteFamilyChildren(familyId) || isAdminEmail();
+      }
+
+      match /settings/{docId} {
+        allow read: if isFamilyMember(familyId) || isAdminEmail();
+        allow write: if canWriteFamilySettings(familyId) || isAdminEmail();
+      }
+    }
+
+    match /invites/{code} {
+      allow read: if isSignedIn()
+        && (
+          resource.data.isActive == true ||
+          canManageFamilyMembers(resource.data.familyId) ||
+          isAdminEmail()
+        );
+      allow create: if isSignedIn()
+        && request.resource.data.code == code
+        && request.resource.data.familyId is string
+        && request.resource.data.createdByUid == request.auth.uid
+        && canManageFamilyMembers(request.resource.data.familyId);
+      allow update: if isAdminEmail()
+        || (
+          isSignedIn()
+          && request.resource.data.familyId == resource.data.familyId
+          && request.resource.data.code == resource.data.code
+          && (
+            canManageFamilyMembers(resource.data.familyId)
+            || (
+              request.resource.data.isActive == false
+              && request.resource.data.usedByUid == request.auth.uid
+            )
+          )
+        );
+      allow delete: if isAdminEmail();
+    }
+
+    match /userPushTokens/{tokenId} {
+      allow read, delete: if isSignedIn()
+        && (
+          isAdminEmail() ||
+          resource.data.uid == request.auth.uid
+        );
+      allow create: if isSignedIn()
+        && (
+          isAdminEmail() ||
+          request.resource.data.uid == request.auth.uid
+        );
+      allow update: if isSignedIn()
+        && (
+          isAdminEmail() ||
+          resource.data.uid == request.auth.uid ||
+          request.resource.data.uid == request.auth.uid
+        );
+    }
+
+    match /reminderSchedules/{docId} {
+      allow read: if isAdminEmail() || isFamilyMember(resource.data.familyId);
+      allow create: if isAdminEmail()
+        || (
+          request.resource.data.familyId is string
+          && canWriteFamilyChildren(request.resource.data.familyId)
+        );
+      allow update, delete: if isAdminEmail()
+        || (
+          resource.data.familyId is string
+          && canWriteFamilyChildren(resource.data.familyId)
+        );
+    }
+
+    match /managers/{docId} {
+      allow read: if isAdminEmail()
+        || (
+          isSignedIn()
+          && resource.data.emailLower is string
+          && resource.data.emailLower == requesterEmail()
+        );
+      allow create, delete: if isAdminEmail();
+      allow update: if isAdminEmail()
+        || (
+          isSignedIn()
+          && resource.data.emailLower is string
+          && resource.data.emailLower == requesterEmail()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "fullName",
+            "whatsapp",
+            "phone",
+            "address",
+            "profilePhotoUrl",
+            "mustChangePassword",
+            "updatedAt"
+          ])
+        );
+    }
+
     match /professionalClinicalRecords/{docId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
@@ -132,7 +358,6 @@ service cloud.firestore {
       allow delete: if isAdminEmail();
     }
 
-    // Entradas imutáveis de prontuário: somente criação; update/delete bloqueados.
     match /professionalClinicalRecordEntries/{docId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
@@ -145,27 +370,69 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Solicitações de vínculo: impede criação/aprovação quando limite de novos foi atingido.
     match /professionalLinkRequests/{docId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn()
-        && request.resource.data.professionalId is string;
-      allow update: if isSignedIn()
-        && request.resource.data.professionalId is string;
+      allow read: if isAdminEmail()
+        || (resource.data.professionalId is string && isProfessionalSelf(resource.data.professionalId))
+        || (resource.data.familyId is string && isFamilyMember(resource.data.familyId));
+      allow create: if request.resource.data.professionalId is string
+        && isProfessionalSelf(request.resource.data.professionalId)
+        && canCreateNewPatients(request.resource.data.professionalId);
+      allow update: if (
+          resource.data.professionalId is string
+          && request.resource.data.professionalId == resource.data.professionalId
+          && (
+            isProfessionalSelf(resource.data.professionalId)
+            || (resource.data.familyId is string && isFamilyMember(resource.data.familyId))
+            || isAdminEmail()
+          )
+        );
       allow delete: if isAdminEmail();
     }
 
-    // Vínculo ativo do paciente: impede ativação/criação de novo vínculo quando limite foi atingido.
     match /professionalPatientLinks/{docId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn()
-        && request.resource.data.professionalId is string;
-      allow update: if isSignedIn()
-        && request.resource.data.professionalId is string;
+      allow read: if isAdminEmail()
+        || (resource.data.professionalId is string && isProfessionalSelf(resource.data.professionalId))
+        || (resource.data.familyId is string && isFamilyMember(resource.data.familyId));
+      allow create: if request.resource.data.professionalId is string
+        && isProfessionalSelf(request.resource.data.professionalId)
+        && canCreateNewPatients(request.resource.data.professionalId);
+      allow update: if resource.data.professionalId is string
+        && request.resource.data.professionalId == resource.data.professionalId
+        && request.resource.data.familyId == resource.data.familyId
+        && (
+          isAdminEmail()
+          || isProfessionalSelf(resource.data.professionalId)
+          || (resource.data.familyId is string && isFamilyMember(resource.data.familyId))
+        )
+        && (
+          request.resource.data.status != "active"
+          || resource.data.status == "active"
+          || canCreateNewPatients(resource.data.professionalId)
+        );
       allow delete: if isAdminEmail();
     }
 
-    // Cadastro base do paciente com código único estável.
+    match /professionalLinkEvents/{docId} {
+      allow read: if isAdminEmail()
+        || (resource.data.professionalId is string && isProfessionalSelf(resource.data.professionalId));
+      allow create: if request.resource.data.professionalId is string
+        && isProfessionalSelf(request.resource.data.professionalId);
+      allow update, delete: if isAdminEmail();
+    }
+
+    match /userNotifications/{docId} {
+      allow read, update, delete: if isAdminEmail()
+        || (resource.data.familyId is string && isFamilyMember(resource.data.familyId));
+      allow create: if isAdminEmail()
+        || (
+          request.resource.data.familyId is string
+          && (
+            isRegisteredProfessional()
+            || isFamilyMember(request.resource.data.familyId)
+          )
+        );
+    }
+
     match /patients/{patientId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
@@ -178,9 +445,8 @@ service cloud.firestore {
       allow delete: if isAdminEmail();
     }
 
-    // Demais coleções do app exigem autenticação, exceto coleções protegidas acima.
     match /{document=**} {
-      allow read, write: if isSignedIn() && !isProtectedCollection();
+      allow read, write: if false;
     }
   }
 }

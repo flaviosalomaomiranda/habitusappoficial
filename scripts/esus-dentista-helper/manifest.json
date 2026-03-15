@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "e-SUS Dentista Helper (PVH)",
+  "version": "0.1.0",
+  "description": "Adiciona anamnese odontologica, CPOD-M e classificacao de risco no e-SUS de Porto Velho.",
+  "permissions": [
+    "storage",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "https://e-sus.portovelho.ro.gov.br/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://e-sus.portovelho.ro.gov.br/lista-atendimento/atendimento/*",
+        "https://e-sus.portovelho.ro.gov.br/agenda/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../src/lib/firebase";
 import { isAdminUser } from "../src/lib/admin";
-import { collection, deleteDoc, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { db } from "../src/lib/firebase";
 
 import { signOut } from "firebase/auth";
@@ -11,7 +11,7 @@ import { useAppContext } from '../context/AppContext';
 
 
 import { Child, Habit, Professional } from '../types';
-import { PlusIcon, UserCircleIcon, PencilIcon, ClipboardListIcon, StarsIcon, ChartBarIcon, TrashIcon, XCircleIcon, CheckCircleIcon, MenuIcon, UserIcon, GiftIcon, UsersIcon, MapPinIcon, HeartIcon, TvIcon, BellIcon, ShoppingBagIcon } from './icons/MiscIcons';
+import { PlusIcon, UserCircleIcon, PencilIcon, ClipboardListIcon, StarsIcon, ChartBarIcon, TrashIcon, XCircleIcon, CheckCircleIcon, MenuIcon, UserIcon, GiftIcon, UsersIcon, MapPinIcon, HeartIcon, TvIcon, BellIcon } from './icons/MiscIcons';
 import AddChildModal from './AddChildModal';
 import EditChildModal from './EditChildModal';
 import AddHabitModal from './AddHabitModal';
@@ -30,14 +30,12 @@ import ManageTagCatalogModal from './ManageTagCatalogModal';
 import UserProfileModal from './UserProfileModal';
 import ManageFamilyMembersModal from './ManageFamilyMembersModal';
 import ManageManagersModal from './ManageManagersModal';
-import RoutineLibraryPage from './RoutineLibraryPage';
 import ChildAvatar from './ChildAvatar';
 import { HABIT_ICONS, getHabitCategoryStyle } from '../constants';
 import { StarIcon } from './icons/HabitIcons';
 import { getTodayDateString, calculateAge, daysUntilNextBirthday } from '../utils/dateUtils';
 import { inferSemanticTags } from '../utils/semanticTags';
 import { pickContextualFooterAd } from '../utils/adMatching';
-import { ROUTINE_LIBRARY_AREAS } from '../data/routineLibraryData';
 
 type DeletionInfo = {
     childId: string;
@@ -46,44 +44,11 @@ type DeletionInfo = {
     date: string;
 }
 
-type ParentView = 'dashboard' | 'recommendations' | 'supportNetwork' | 'routineLibrary' | 'favorites' | 'manageLinks' | 'adminTemplates' | 'adminSupportNetwork' | 'adminRecommendations' | 'adminSupportNetworkPricing' | 'adminMasterDefaults' | 'adminTagCatalog';
-
-type FamilyProfessionalLink = {
-    id: string;
-    professionalId: string;
-    professionalName: string;
-    status: string;
-    linkedChildIds: string[];
-    consentBlocks: { personal: boolean; profile: boolean; health: boolean };
-    linkExpiresAtMs: number | null;
-};
-
-type FamilyAppointment = {
-    id: string;
-    professionalId: string;
-    childId: string;
-    childName: string;
-    startsAtIso: string;
-    durationMin: number;
-    notes: string;
-    tags: string[];
-    patientStatus: 'pending' | 'confirmed' | 'cancelled';
-    syncToPatientCard: boolean;
-    cancelledByProfessional?: boolean;
-};
-
-type LinkDraft = {
-    linkedChildIds: string[];
-    consentBlocks: { personal: boolean; profile: boolean; health: boolean };
-    expiresAtDate: string;
-};
-
-type AchievementShareMode = "summary" | "list" | "full";
+type ParentView = 'dashboard' | 'recommendations' | 'supportNetwork' | 'favorites' | 'adminTemplates' | 'adminSupportNetwork' | 'adminRecommendations' | 'adminSupportNetworkPricing' | 'adminMasterDefaults' | 'adminTagCatalog';
 
 interface ParentDashboardProps {
     onEnterTvMode: () => void;
 }
-const MAX_FREEMIUM_PROFILES = 4; // principal + 3 secundarios
 
 const rotateBySeed = <T,>(items: T[], seed: number): T[] => {
     if (items.length <= 1) return items;
@@ -145,23 +110,6 @@ const buildWhatsAppLink = (phone: string, message: string) => {
 };
 
 const isValidHttpUrl = (value: string) => /^https?:\/\//i.test(value.trim());
-
-const timestampToMs = (value: any): number | null => {
-    if (value === null || value === undefined) return null;
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value?.toMillis === "function") return Number(value.toMillis());
-    if (typeof value?.seconds === "number") return value.seconds * 1000;
-    const parsed = Date.parse(String(value));
-    return Number.isFinite(parsed) ? parsed : null;
-};
-
-const toIsoDate = (ms: number) => {
-    const d = new Date(ms);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-};
 
 const getRecommendationBadgeClassName = (type?: "app_exclusive" | "offer" | "coupon" | "urgency") => {
     if (type === "app_exclusive") return "bg-purple-600 text-white";
@@ -558,6 +506,7 @@ const SupportFavoriteVerifiedCard: React.FC<{ prof: Professional; onToggleFavori
                     >
                         <HeartIcon filled className="w-4 h-4" />
                     </button>
+                    
                 </div>
                 <p className="text-xs text-gray-500 truncate">{getSpecialtiesLabel(prof)}</p>
                 {prof.city && prof.uf && <p className="text-xs text-gray-500 mt-0.5 truncate">📍 {prof.city} - {prof.uf}</p>}
@@ -652,7 +601,7 @@ const SupportFavoriteVerifiedCard: React.FC<{ prof: Professional; onToggleFavori
 
 
 const ParentDashboard: React.FC<ParentDashboardProps> = ({ onEnterTvMode }) => {
-  const { familyId, settings, userProfile, supportNetworkDefaultMasters, children, deleteHabit, skipHabitForDate, getHabitsForChildOnDate, toggleHabitCompletion, rejectHabitCompletion, redeemedRewards, toggleRewardDelivery, getFavoriteProfessionals, toggleFavoriteProfessional, supportNetworkProfessionals, activeSupportNetworkProfessionals, productRecommendations, routineTemplates, trackProfessionalEvent, trackAdEvent, isFamilyOwner, canManageMembers, canEditChildren, canEditHabits, canMarkHabits, isManager } = useAppContext();
+  const { familyId, settings, userProfile, supportNetworkDefaultMasters, children, deleteHabit, skipHabitForDate, getHabitsForChildOnDate, toggleHabitCompletion, rejectHabitCompletion, redeemedRewards, toggleRewardDelivery, getFavoriteProfessionals, toggleFavoriteProfessional, supportNetworkProfessionals, activeSupportNetworkProfessionals, productRecommendations, trackProfessionalEvent, trackAdEvent, isFamilyOwner, canManageMembers, canEditChildren, canEditHabits, canMarkHabits, isManager } = useAppContext();
 
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
 
@@ -929,39 +878,10 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
     const [isProfileModalOpen, setProfileModalOpen] = useState(false);
     const [isManageMembersModalOpen, setManageMembersModalOpen] = useState(false);
     const [isManageManagersModalOpen, setManageManagersModalOpen] = useState(false);
-    const [notifications, setNotifications] = useState<Array<{ id: string; title: string; message: string; type?: string; metadata?: any; readAt?: any; createdAt?: any }>>([]);
+    const [openQrScannerOnSupportNetwork, setOpenQrScannerOnSupportNetwork] = useState(false);
+    const [incomingQrLink, setIncomingQrLink] = useState<string | null>(null);
+    const [notifications, setNotifications] = useState<Array<{ id: string; title: string; message: string; readAt?: any; createdAt?: any }>>([]);
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-    const [pendingLinkAction, setPendingLinkAction] = useState<{
-        notificationId: string;
-        requestId: string;
-        professionalName: string;
-        requestedConsentBlocks?: { personal: boolean; profile: boolean; health: boolean } | null;
-    } | null>(null);
-    const [selectedSharedChildId, setSelectedSharedChildId] = useState<string>("");
-    const [sharePersonalBlock, setSharePersonalBlock] = useState(true);
-    const [shareProfileBlock, setShareProfileBlock] = useState(true);
-    const [shareHealthBlock, setShareHealthBlock] = useState(true);
-    const [generatedLinkCode, setGeneratedLinkCode] = useState<string | null>(null);
-    const [generatedLinkCodeExpiresAtMs, setGeneratedLinkCodeExpiresAtMs] = useState<number | null>(null);
-    const [linkCodeNowMs, setLinkCodeNowMs] = useState<number>(Date.now());
-    const [isProcessingLinkAction, setIsProcessingLinkAction] = useState(false);
-    const [mobileProfessionalArea, setMobileProfessionalArea] = useState("all");
-    const [mobileHomeBannerIndex, setMobileHomeBannerIndex] = useState(0);
-    const [routineLibraryInitialArea, setRoutineLibraryInitialArea] = useState("all");
-    const [showAreasScrollHint, setShowAreasScrollHint] = useState(true);
-    const [showRoutineScrollHint, setShowRoutineScrollHint] = useState(true);
-    const [importedRoutineTemplateIds, setImportedRoutineTemplateIds] = useState<string[]>([]);
-    const [isAchievementShareOpen, setAchievementShareOpen] = useState(false);
-    const [achievementShareMode, setAchievementShareMode] = useState<AchievementShareMode>("list");
-    const [achievementShowName, setAchievementShowName] = useState(true);
-    const [isGeneratingAchievementAsset, setIsGeneratingAchievementAsset] = useState(false);
-    const [familyProfessionalLinks, setFamilyProfessionalLinks] = useState<FamilyProfessionalLink[]>([]);
-    const [familyAppointments, setFamilyAppointments] = useState<FamilyAppointment[]>([]);
-    const [linkDrafts, setLinkDrafts] = useState<Record<string, LinkDraft>>({});
-    const mobileBannerScrollerRef = useRef<HTMLDivElement | null>(null);
-    const areasScrollHintTimeoutRef = useRef<number | null>(null);
-    const routineScrollHintTimeoutRef = useRef<number | null>(null);
-    const celebrationAudioCtxRef = useRef<AudioContext | null>(null);
     
     const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'warning' } | null>(null);
     
@@ -992,6 +912,19 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
         return () => unsub();
     }, [familyId]);
 
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const params = new URLSearchParams(window.location.search || "");
+        const qrToken = String(params.get("qrsaude") || "").trim();
+        if (!qrToken) return;
+        const fullQrLink = `${window.location.origin}/?qrsaude=${encodeURIComponent(qrToken)}`;
+        setIncomingQrLink(fullQrLink);
+        setCurrentView("supportNetwork");
+        params.delete("qrsaude");
+        const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash || ""}`;
+        window.history.replaceState({}, document.title, nextUrl);
+    }, []);
+
     const unreadNotificationsCount = notifications.filter((item) => !item.readAt).length;
     const readNotificationsCount = notifications.filter((item) => !!item.readAt).length;
     const markNotificationAsRead = async (id: string) => {
@@ -1001,403 +934,6 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
             console.error("Falha ao marcar notificação como lida:", err);
         }
     };
-    useEffect(() => {
-        if (!pendingLinkAction || !generatedLinkCode || !generatedLinkCodeExpiresAtMs) return;
-        setLinkCodeNowMs(Date.now());
-        const timer = window.setInterval(() => {
-            setLinkCodeNowMs(Date.now());
-        }, 1000);
-        return () => window.clearInterval(timer);
-    }, [pendingLinkAction, generatedLinkCode, generatedLinkCodeExpiresAtMs]);
-    const generatedCodeSecondsRemaining = useMemo(() => {
-        if (!generatedLinkCodeExpiresAtMs) return 0;
-        return Math.max(0, Math.floor((generatedLinkCodeExpiresAtMs - linkCodeNowMs) / 1000));
-    }, [generatedLinkCodeExpiresAtMs, linkCodeNowMs]);
-    const generatedCodeCountdownLabel = useMemo(() => {
-        const min = Math.floor(generatedCodeSecondsRemaining / 60);
-        const sec = generatedCodeSecondsRemaining % 60;
-        return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-    }, [generatedCodeSecondsRemaining]);
-    useEffect(() => {
-        if (currentView !== "dashboard") return;
-        const timer = window.setInterval(() => setMobileHomeBannerIndex((prev) => prev + 1), 30_000);
-        return () => window.clearInterval(timer);
-    }, [currentView]);
-    useEffect(() => {
-        return () => {
-            if (areasScrollHintTimeoutRef.current) window.clearTimeout(areasScrollHintTimeoutRef.current);
-            if (routineScrollHintTimeoutRef.current) window.clearTimeout(routineScrollHintTimeoutRef.current);
-        };
-    }, []);
-
-    const handleAreasScroll = () => {
-        setShowAreasScrollHint(false);
-        if (areasScrollHintTimeoutRef.current) window.clearTimeout(areasScrollHintTimeoutRef.current);
-        areasScrollHintTimeoutRef.current = window.setTimeout(() => setShowAreasScrollHint(true), 700);
-    };
-
-    const handleRoutineScroll = () => {
-        setShowRoutineScrollHint(false);
-        if (routineScrollHintTimeoutRef.current) window.clearTimeout(routineScrollHintTimeoutRef.current);
-        routineScrollHintTimeoutRef.current = window.setTimeout(() => setShowRoutineScrollHint(true), 700);
-    };
-
-    const playHabitSuccessSound = () => {
-        if (typeof window === "undefined") return;
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        if (!AudioCtx) return;
-        try {
-            if (!celebrationAudioCtxRef.current) {
-                celebrationAudioCtxRef.current = new AudioCtx();
-            }
-            const ctx = celebrationAudioCtxRef.current;
-            if (!ctx) return;
-            if (ctx.state === "suspended") {
-                void ctx.resume();
-            }
-            const now = ctx.currentTime;
-            const master = ctx.createGain();
-            master.connect(ctx.destination);
-            master.gain.setValueAtTime(0.0001, now);
-            master.gain.exponentialRampToValueAtTime(0.16, now + 0.008);
-            master.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-
-            const playCoinTone = (startAt: number, freq: number, duration: number) => {
-                const tone = ctx.createOscillator();
-                const overtone = ctx.createOscillator();
-                const env = ctx.createGain();
-                const shaper = ctx.createBiquadFilter();
-                shaper.type = "bandpass";
-                shaper.frequency.setValueAtTime(2400, startAt);
-                shaper.Q.setValueAtTime(5, startAt);
-
-                tone.type = "triangle";
-                overtone.type = "sine";
-                tone.frequency.setValueAtTime(freq, startAt);
-                overtone.frequency.setValueAtTime(freq * 2.02, startAt);
-
-                env.gain.setValueAtTime(0.0001, startAt);
-                env.gain.exponentialRampToValueAtTime(0.42, startAt + 0.0035);
-                env.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
-
-                tone.connect(env);
-                overtone.connect(env);
-                env.connect(shaper);
-                shaper.connect(master);
-
-                tone.start(startAt);
-                overtone.start(startAt);
-                tone.stop(startAt + duration + 0.01);
-                overtone.stop(startAt + duration + 0.01);
-            };
-
-            // Classic arcade-like pickup: two bright ascending tones.
-            playCoinTone(now, 1318.51, 0.09); // E6
-            playCoinTone(now + 0.055, 1760, 0.1); // A6
-        } catch {
-            // noop
-        }
-    };
-
-    const triggerHabitCelebration = (target?: HTMLElement | null) => {
-        if (typeof document === "undefined") return;
-        const root = document.body;
-        if (!root) return;
-        const rect = target?.getBoundingClientRect();
-        const originX = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-        const originY = rect ? rect.top + rect.height / 2 : window.innerHeight * 0.6;
-
-        const flare = document.createElement("div");
-        flare.style.position = "fixed";
-        flare.style.left = `${originX}px`;
-        flare.style.top = `${originY}px`;
-        flare.style.width = "16px";
-        flare.style.height = "16px";
-        flare.style.borderRadius = "9999px";
-        flare.style.background = "radial-gradient(circle, rgba(253,224,71,0.95) 0%, rgba(196,181,253,0.25) 70%, rgba(196,181,253,0) 100%)";
-        flare.style.pointerEvents = "none";
-        flare.style.zIndex = "80";
-        flare.style.transform = "translate(-50%, -50%) scale(0.2)";
-        root.appendChild(flare);
-        flare.animate(
-            [
-                { transform: "translate(-50%, -50%) scale(0.2)", opacity: 0.85 },
-                { transform: "translate(-50%, -50%) scale(3)", opacity: 0 },
-            ],
-            { duration: 520, easing: "cubic-bezier(.2,.8,.2,1)" }
-        );
-        window.setTimeout(() => flare.remove(), 560);
-
-        const particles = 12;
-        for (let i = 0; i < particles; i += 1) {
-            const node = document.createElement("div");
-            node.textContent = Math.random() > 0.45 ? "✨" : "⭐";
-            node.style.position = "fixed";
-            node.style.left = `${originX}px`;
-            node.style.top = `${originY}px`;
-            node.style.fontSize = `${Math.floor(12 + Math.random() * 8)}px`;
-            node.style.pointerEvents = "none";
-            node.style.zIndex = "85";
-            node.style.willChange = "transform, opacity";
-            root.appendChild(node);
-
-            const angle = (Math.PI * 2 * i) / particles + (Math.random() - 0.5) * 0.35;
-            const distance = 36 + Math.random() * 62;
-            const dx = Math.cos(angle) * distance;
-            const dy = Math.sin(angle) * distance - 10;
-
-            node.animate(
-                [
-                    { transform: "translate(-50%, -50%) scale(0.6)", opacity: 0 },
-                    { transform: "translate(-50%, -50%) scale(1)", opacity: 1, offset: 0.2 },
-                    { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(0.95)`, opacity: 0 },
-                ],
-                { duration: 820 + Math.random() * 220, easing: "cubic-bezier(.17,.84,.44,1)" }
-            );
-
-            window.setTimeout(() => node.remove(), 1100);
-        }
-    };
-
-    const handleHabitCompleteAction = (
-        childId: string,
-        habitId: string,
-        currentStatus: string | undefined,
-        sourceEl?: HTMLElement | null
-    ) => {
-        const willComplete = currentStatus !== "COMPLETED";
-        toggleHabitCompletion(childId, habitId, viewedDate);
-        if (willComplete) {
-            playHabitSuccessSound();
-            triggerHabitCelebration(sourceEl);
-        }
-    };
-
-    const handleConfirmAppointment = async (appointmentId: string) => {
-        try {
-            await setDoc(
-                doc(db, "professionalAppointments", appointmentId),
-                {
-                    patientStatus: "confirmed",
-                    patientStatusAt: serverTimestamp(),
-                    patientStatusByUid: auth.currentUser?.uid || null,
-                    updatedAt: serverTimestamp(),
-                },
-                { merge: true }
-            );
-            showToast("Consulta confirmada.", "success");
-        } catch (err) {
-            console.error("Falha ao confirmar consulta:", err);
-            showToast("Não foi possível confirmar a consulta.", "error");
-        }
-    };
-
-    const handleCancelAppointment = async (appointmentId: string) => {
-        try {
-            await setDoc(
-                doc(db, "professionalAppointments", appointmentId),
-                {
-                    patientStatus: "cancelled",
-                    patientStatusAt: serverTimestamp(),
-                    patientStatusByUid: auth.currentUser?.uid || null,
-                    cancelledByPatient: true,
-                    updatedAt: serverTimestamp(),
-                },
-                { merge: true }
-            );
-            showToast("Consulta cancelada.", "warning");
-        } catch (err) {
-            console.error("Falha ao cancelar consulta:", err);
-            showToast("Não foi possível cancelar a consulta.", "error");
-        }
-    };
-
-    const mobileLocationLabel = useMemo(() => {
-        if (!familyLocation?.cityName || !familyLocation?.uf) return "Localização não definida";
-        return `${familyLocation.cityName} - ${familyLocation.uf}`;
-    }, [familyLocation?.cityName, familyLocation?.uf]);
-
-    const mobileProfessionalAreas = useMemo(
-        () => [
-            { key: "all", label: "Tudo" },
-            { key: "medicina", label: "Medicina" },
-            { key: "odontologia", label: "Odonto" },
-            { key: "saude_mental", label: "Saude Mental" },
-            { key: "fisio_terapias", label: "Fisio/Terapias" },
-            { key: "nutricao", label: "Nutri" },
-            { key: "enfermagem", label: "Enfermagem" },
-            { key: "outras", label: "Outras" },
-        ],
-        []
-    );
-    const routineLibraryAreas = useMemo(() => {
-        const byKey = new Map<string, string>();
-        ROUTINE_LIBRARY_AREAS.forEach((area) => {
-            byKey.set(area.key, area.label);
-        });
-        routineTemplates.forEach((template) => {
-            const key = String(template.areaKey || "").trim();
-            const label = String(template.areaLabel || "").trim();
-            if (!key || !label || byKey.has(key)) return;
-            byKey.set(key, label);
-        });
-        return Array.from(byKey.entries()).map(([key, label]) => ({ key, label }));
-    }, [routineTemplates]);
-
-    useEffect(() => {
-        const storageKey = `routine-library-imports:${familyId || "guest"}`;
-        try {
-            const raw = window.localStorage.getItem(storageKey);
-            if (!raw) {
-                setImportedRoutineTemplateIds([]);
-                return;
-            }
-            const parsed = JSON.parse(raw);
-            if (!Array.isArray(parsed)) {
-                setImportedRoutineTemplateIds([]);
-                return;
-            }
-            const ids = parsed.map((item) => String(item || "")).filter(Boolean);
-            setImportedRoutineTemplateIds(ids);
-        } catch {
-            setImportedRoutineTemplateIds([]);
-        }
-    }, [familyId]);
-
-    useEffect(() => {
-        const storageKey = `routine-library-imports:${familyId || "guest"}`;
-        try {
-            window.localStorage.setItem(storageKey, JSON.stringify(importedRoutineTemplateIds));
-        } catch {
-            // noop
-        }
-    }, [familyId, importedRoutineTemplateIds]);
-
-    const toggleRoutineTemplateImport = (templateId: string) => {
-        setImportedRoutineTemplateIds((prev) => {
-            const isImported = prev.includes(templateId);
-            const next = isImported ? prev.filter((id) => id !== templateId) : [...prev, templateId];
-            showToast(isImported ? "Rotina removida da sua biblioteca." : "Rotina importada para sua biblioteca.", "success");
-            return next;
-        });
-    };
-
-    useEffect(() => {
-        if (!familyId) {
-            setFamilyProfessionalLinks([]);
-            setFamilyAppointments([]);
-            setLinkDrafts({});
-            return;
-        }
-        const qLinks = query(collection(db, "professionalPatientLinks"), where("familyId", "==", familyId));
-        const qAppointments = query(collection(db, "professionalAppointments"), where("familyId", "==", familyId));
-        const unsubLinks = onSnapshot(qLinks, (snap) => {
-            const nowMs = Date.now();
-            const rows = snap.docs
-                .map((docSnap) => {
-                    const data = docSnap.data() as any;
-                    const professionalId = String(data?.professionalId || "");
-                    const fallbackName = supportNetworkProfessionals.find((prof) => prof.id === professionalId)?.name || "";
-                    const expiresAt = timestampToMs(data?.linkExpiresAtMs) ?? timestampToMs(data?.linkExpiresAt);
-                    const hasExpiration = typeof expiresAt === "number" && Number.isFinite(expiresAt) && expiresAt > 0;
-                    const status = String(data?.status || "active");
-                    const endedReason = String(data?.endedReason || "");
-
-                    if (status === "inactive" && endedReason === "expired" && !hasExpiration) {
-                        void setDoc(
-                            doc(db, "professionalPatientLinks", docSnap.id),
-                            {
-                                status: "active",
-                                endedReason: null,
-                                endedAt: null,
-                                updatedAt: serverTimestamp(),
-                            },
-                            { merge: true }
-                        ).catch((err) => console.error("Falha ao reativar vínculo sem prazo:", err));
-                    }
-
-                    if (status === "active" && hasExpiration && expiresAt < nowMs) {
-                        void setDoc(
-                            doc(db, "professionalPatientLinks", docSnap.id),
-                            {
-                                status: "inactive",
-                                endedReason: "expired",
-                                endedAt: serverTimestamp(),
-                                updatedAt: serverTimestamp(),
-                            },
-                            { merge: true }
-                        ).catch((err) => console.error("Falha ao encerrar vínculo expirado:", err));
-                    }
-
-                    const effectiveStatus =
-                        status === "active" && (!hasExpiration || expiresAt >= nowMs)
-                            ? "active"
-                            : status === "inactive" && endedReason === "expired" && !hasExpiration
-                                ? "active"
-                                : status;
-                    return {
-                        id: docSnap.id,
-                        professionalId,
-                        professionalName: String(data?.professionalName || fallbackName || professionalId || "Profissional"),
-                        status: effectiveStatus,
-                        linkedChildIds: Array.isArray(data?.linkedChildIds) ? data.linkedChildIds.map((id: any) => String(id || "")).filter(Boolean) : [],
-                        consentBlocks: {
-                            personal: data?.consentBlocks?.personal ?? true,
-                            profile: data?.consentBlocks?.profile ?? true,
-                            health: data?.consentBlocks?.health ?? true,
-                        },
-                        linkExpiresAtMs: expiresAt,
-                    } as FamilyProfessionalLink;
-                })
-                .filter((row) => row.professionalId && row.status === "active")
-                .sort((a, b) => a.professionalName.localeCompare(b.professionalName, "pt-BR"));
-            setFamilyProfessionalLinks(rows);
-        });
-        const unsubAppointments = onSnapshot(qAppointments, (snap) => {
-            const rows = snap.docs
-                .map((docSnap) => ({ ...(docSnap.data() as any), id: docSnap.id }))
-                .map((row) => ({
-                    id: String(row.id || ""),
-                    professionalId: String(row.professionalId || ""),
-                    childId: String(row.childId || ""),
-                    childName: String(row.childName || "Paciente"),
-                    startsAtIso: String(row.startsAtIso || ""),
-                    durationMin: Math.max(10, Number(row.durationMin || 30)),
-                    notes: String(row.notes || ""),
-                    tags: Array.isArray(row.tags) ? row.tags.map((item: any) => String(item || "").trim()).filter(Boolean) : [],
-                    patientStatus: String(row.patientStatus || "pending") === "confirmed"
-                        ? "confirmed"
-                        : String(row.patientStatus || "pending") === "cancelled"
-                            ? "cancelled"
-                            : "pending",
-                    syncToPatientCard: Boolean(row.syncToPatientCard),
-                    cancelledByProfessional: Boolean(row.cancelledByProfessional),
-                }))
-                .filter((row) => row.startsAtIso)
-                .sort((a, b) => new Date(a.startsAtIso).getTime() - new Date(b.startsAtIso).getTime()) as FamilyAppointment[];
-            setFamilyAppointments(rows);
-        });
-        return () => {
-            unsubLinks();
-            unsubAppointments();
-        };
-    }, [familyId, supportNetworkProfessionals]);
-
-    useEffect(() => {
-        setLinkDrafts((prev) => {
-            const next: Record<string, LinkDraft> = {};
-            familyProfessionalLinks.forEach((link) => {
-                const existing = prev[link.id];
-                const normalizedChildIds = (link.linkedChildIds || []).slice(0, 1);
-                next[link.id] = existing || {
-                    linkedChildIds: normalizedChildIds,
-                    consentBlocks: { ...link.consentBlocks },
-                    expiresAtDate: link.linkExpiresAtMs ? toIsoDate(link.linkExpiresAtMs) : "",
-                };
-            });
-            return next;
-        });
-    }, [familyProfessionalLinks]);
     const deleteNotification = async (id: string) => {
         try {
             await deleteDoc(doc(db, "userNotifications", id));
@@ -1412,128 +948,6 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
             await Promise.all(readItems.map((item) => deleteDoc(doc(db, "userNotifications", item.id))));
         } catch (err) {
             console.error("Falha ao apagar notificações lidas:", err);
-        }
-    };
-    const openProfessionalLinkRequestModal = async (notificationId: string, requestId?: string, professionalName?: string) => {
-        if (!requestId) return;
-        setGeneratedLinkCode(null);
-        setGeneratedLinkCodeExpiresAtMs(null);
-        const defaultChildId = children[0]?.id || "";
-        setSelectedSharedChildId(defaultChildId);
-        const defaultRequested = { personal: true, profile: true, health: true };
-        try {
-            const requestSnap = await getDoc(doc(db, "professionalLinkRequests", requestId));
-            const requestData = requestSnap.exists() ? (requestSnap.data() as any) : null;
-            const requested = requestData?.requestedConsentBlocks || requestData?.consentBlocks || defaultRequested;
-            setSharePersonalBlock(requested?.personal !== false);
-            setShareProfileBlock(requested?.profile !== false);
-            setShareHealthBlock(requested?.health !== false);
-            setPendingLinkAction({
-                notificationId,
-                requestId,
-                professionalName: professionalName || "Profissional",
-                requestedConsentBlocks: {
-                    personal: requested?.personal !== false,
-                    profile: requested?.profile !== false,
-                    health: requested?.health !== false,
-                },
-            });
-        } catch {
-            setSharePersonalBlock(true);
-            setShareProfileBlock(true);
-            setShareHealthBlock(true);
-            setPendingLinkAction({
-                notificationId,
-                requestId,
-                professionalName: professionalName || "Profissional",
-                requestedConsentBlocks: defaultRequested,
-            });
-        }
-        await markNotificationAsRead(notificationId);
-    };
-    const handleApproveProfessionalLink = async () => {
-        if (!pendingLinkAction) return;
-        if (children.length > 0 && !selectedSharedChildId) {
-            showToast("Selecione 1 pessoa para vincular.", "warning");
-            return;
-        }
-        if (!sharePersonalBlock && !shareProfileBlock && !shareHealthBlock) {
-            showToast("Selecione ao menos 1 bloco para compartilhar.", "warning");
-            return;
-        }
-        setIsProcessingLinkAction(true);
-        try {
-            const requestRef = doc(db, "professionalLinkRequests", pendingLinkAction.requestId);
-            const snap = await getDoc(requestRef);
-            if (!snap.exists()) {
-                showToast("Solicitação não encontrada.", "error");
-                return;
-            }
-            const data = snap.data() as any;
-            if (String(data?.status || "") !== "pending_user") {
-                showToast("Esta solicitação não está mais pendente.", "warning");
-                return;
-            }
-            const code = String(Math.floor(100000 + Math.random() * 900000));
-            const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-            const sharedChildren = children
-                .filter((child) => child.id === selectedSharedChildId)
-                .map((child) => ({ id: child.id, name: child.name }));
-            const sharedChildIds = selectedSharedChildId ? [selectedSharedChildId] : [];
-            await setDoc(
-                requestRef,
-                {
-                    familyId: familyId || data?.familyId || null,
-                    userUid: auth.currentUser?.uid || null,
-                    requesterFullName: userProfile?.fullName || null,
-                    requesterCpf: userProfile?.cpf || null,
-                    requestedByEmail: auth.currentUser?.email || null,
-                    sharedChildIds,
-                    sharedChildren,
-                    consentBlocks: {
-                        personal: sharePersonalBlock,
-                        profile: shareProfileBlock,
-                        health: shareHealthBlock,
-                    },
-                    verificationCode: code,
-                    codeGeneratedAt: serverTimestamp(),
-                    codeExpiresAtMs: expiresAt.getTime(),
-                    status: "pending_code",
-                    updatedAt: serverTimestamp(),
-                },
-                { merge: true }
-            );
-            setGeneratedLinkCode(code);
-            setGeneratedLinkCodeExpiresAtMs(expiresAt.getTime());
-            showToast("Código gerado. Passe ao profissional em até 10 minutos.", "success");
-        } catch (err) {
-            console.error("Falha ao aprovar solicitação de vínculo:", err);
-            showToast("Não foi possível aprovar a solicitação.", "error");
-        } finally {
-            setIsProcessingLinkAction(false);
-        }
-    };
-    const handleRejectProfessionalLink = async () => {
-        if (!pendingLinkAction) return;
-        setIsProcessingLinkAction(true);
-        try {
-            await setDoc(
-                doc(db, "professionalLinkRequests", pendingLinkAction.requestId),
-                {
-                    status: "rejected",
-                    decidedAt: serverTimestamp(),
-                    decidedByUid: auth.currentUser?.uid || null,
-                    updatedAt: serverTimestamp(),
-                },
-                { merge: true }
-            );
-            setPendingLinkAction(null);
-            showToast("Solicitação recusada.", "warning");
-        } catch (err) {
-            console.error("Falha ao rejeitar solicitação:", err);
-            showToast("Não foi possível recusar agora.", "error");
-        } finally {
-            setIsProcessingLinkAction(false);
         }
     };
 
@@ -1558,124 +972,9 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
         }
     };
 
-    const isPrincipalProfile = (childId?: string) => String(childId || "").startsWith("principal-");
-    const hasReachedFreemiumProfileLimit = children.length >= MAX_FREEMIUM_PROFILES;
-
     const showToast = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 3500);
-    };
-
-    const handleOpenAddChildModal = () => {
-        if (hasReachedFreemiumProfileLimit) {
-            showToast("Plano freemium permite ate 4 perfis (principal + 3 secundarios).", "warning");
-            return;
-        }
-        setAddChildModalOpen(true);
-    };
-
-    const updateLinkDraft = (linkId: string, updater: (draft: LinkDraft) => LinkDraft) => {
-        setLinkDrafts((prev) => {
-            const base = prev[linkId];
-            if (!base) return prev;
-            return { ...prev, [linkId]: updater(base) };
-        });
-    };
-
-    const handleToggleLinkChild = (linkId: string, childId: string) => {
-        updateLinkDraft(linkId, (draft) => ({
-            ...draft,
-            linkedChildIds: [childId],
-        }));
-    };
-
-    const handleToggleLinkBlock = (linkId: string, block: "personal" | "profile" | "health") => {
-        updateLinkDraft(linkId, (draft) => ({
-            ...draft,
-            consentBlocks: {
-                ...draft.consentBlocks,
-                [block]: !draft.consentBlocks[block],
-            },
-        }));
-    };
-
-    const handleSaveLinkDraft = async (link: FamilyProfessionalLink) => {
-        const draft = linkDrafts[link.id];
-        if (!draft) return;
-        if (draft.linkedChildIds.length === 0) {
-            showToast("Selecione ao menos 1 pessoa para manter o vínculo.", "warning");
-            return;
-        }
-        if (draft.linkedChildIds.length > 1) {
-            showToast("Este vínculo deve conter apenas 1 pessoa. Para outra pessoa, crie novo vínculo.", "warning");
-            return;
-        }
-        const { personal, profile, health } = draft.consentBlocks;
-        if (!personal && !profile && !health) {
-            showToast("Selecione ao menos 1 bloco de compartilhamento.", "warning");
-            return;
-        }
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const max = new Date(today);
-        max.setDate(max.getDate() + 90);
-        let linkExpiresAtMs: number | null = null;
-        if (draft.expiresAtDate) {
-            const picked = new Date(`${draft.expiresAtDate}T23:59:59`);
-            if (!Number.isFinite(picked.getTime())) {
-                showToast("Data de encerramento inválida.", "error");
-                return;
-            }
-            if (picked.getTime() < today.getTime()) {
-                showToast("A data de encerramento não pode estar no passado.", "warning");
-                return;
-            }
-            if (picked.getTime() > max.getTime()) {
-                showToast("O prazo máximo de vínculo é 90 dias.", "warning");
-                return;
-            }
-            linkExpiresAtMs = picked.getTime();
-        }
-        const linkedChildren = children
-            .filter((child) => draft.linkedChildIds.includes(child.id))
-            .map((child) => ({ id: child.id, name: child.name }));
-        try {
-            await setDoc(
-                doc(db, "professionalPatientLinks", link.id),
-                {
-                    linkedChildIds: draft.linkedChildIds,
-                    linkedChildren,
-                    consentBlocks: draft.consentBlocks,
-                    linkExpiresAtMs,
-                    updatedAt: serverTimestamp(),
-                },
-                { merge: true }
-            );
-            showToast("Vínculo atualizado com sucesso.", "success");
-            setCurrentView("dashboard");
-        } catch (err) {
-            console.error("Falha ao atualizar vínculo:", err);
-            showToast("Não foi possível atualizar o vínculo.", "error");
-        }
-    };
-
-    const handleEndLinkNow = async (link: FamilyProfessionalLink) => {
-        if (!window.confirm(`Encerrar vínculo com ${link.professionalName}?`)) return;
-        try {
-            await setDoc(
-                doc(db, "professionalPatientLinks", link.id),
-                {
-                    status: "inactive",
-                    endedAt: serverTimestamp(),
-                    updatedAt: serverTimestamp(),
-                },
-                { merge: true }
-            );
-            showToast("Vínculo encerrado.", "success");
-        } catch (err) {
-            console.error("Falha ao encerrar vínculo:", err);
-            showToast("Não foi possível encerrar o vínculo.", "error");
-        }
     };
     
     const handleHabitAdded = (addedIds: string[]) => {
@@ -1697,408 +996,19 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
         return <span className="text-[10px] px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full">🎂 {daysUntil} dias para {age+1} anos</span>
     }
 
-    const toIsoLocalDate = (date: Date) => {
-        const y = date.getFullYear();
-        const m = String(date.getMonth() + 1).padStart(2, "0");
-        const d = String(date.getDate()).padStart(2, "0");
-        return `${y}-${m}-${d}`;
+    const getFormattedDateTitle = (dateStr: string) => {
+        const todayStr = getTodayDateString();
+        if (dateStr === todayStr) return "Hoje";
+        return new Date(dateStr + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
     };
 
-    const getWeekDatesFor = (dateStr: string) => {
-        const base = new Date(`${dateStr}T00:00:00`);
-        const sunday = new Date(base);
-        sunday.setDate(base.getDate() - base.getDay());
-        return Array.from({ length: 7 }, (_, idx) => {
-            const next = new Date(sunday);
-            next.setDate(sunday.getDate() + idx);
-            return next;
-        });
+    const getWeekdayName = (dateStr: string) => {
+        return new Date(dateStr + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long' });
     };
-
-    const weekDates = useMemo(() => getWeekDatesFor(viewedDate), [viewedDate]);
-    const weekDayLetters = ["D", "S", "T", "Q", "Q", "S", "S"];
-    const viewedWeekdayLabel = useMemo(() => {
-        const label = new Date(`${viewedDate}T00:00:00`).toLocaleDateString("pt-BR", { weekday: "long" });
-        return label.replace("-feira", "");
-    }, [viewedDate]);
-    const viewedMonthYearLabel = useMemo(() => {
-        const raw = new Date(`${viewedDate}T00:00:00`).toLocaleDateString("pt-BR", { month: "short", year: "numeric" });
-        const cleaned = raw.replace(".", "");
-        return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-    }, [viewedDate]);
 
     const habitsForDate = selectedChild ? getHabitsForChildOnDate(selectedChild.id, viewedDate) : [];
-    const appointmentsForSelectedChild = useMemo(() => {
-        if (!selectedChild) return [];
-        return familyAppointments
-            .filter((item) => item.childId === selectedChild.id || item.childId === "__family__")
-            .sort((a, b) => new Date(a.startsAtIso).getTime() - new Date(b.startsAtIso).getTime());
-    }, [familyAppointments, selectedChild]);
-    const appointmentsForViewedDate = useMemo(() => {
-        return appointmentsForSelectedChild
-            .filter((item) => String(item.startsAtIso || "").slice(0, 10) === viewedDate)
-            .sort((a, b) => new Date(a.startsAtIso).getTime() - new Date(b.startsAtIso).getTime());
-    }, [appointmentsForSelectedChild, viewedDate]);
-    const nextAppointmentForSelectedChild = useMemo(() => {
-        const now = Date.now();
-        return appointmentsForSelectedChild.find((item) => new Date(item.startsAtIso).getTime() >= now) || null;
-    }, [appointmentsForSelectedChild]);
-    const getFamilyAppointmentVisual = (appointment: FamilyAppointment) => {
-        if (appointment.patientStatus === "confirmed") {
-            return {
-                card: "border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50 shadow-sm",
-                badge: "bg-blue-600 text-white",
-                label: "Confirmada",
-            };
-        }
-        if (appointment.patientStatus === "cancelled") {
-            return {
-                card: "border-rose-200 bg-gradient-to-r from-rose-50 to-red-50 shadow-sm",
-                badge: "bg-rose-600 text-white",
-                label: appointment.cancelledByProfessional ? "CANCELADO PELO PROFISSIONAL" : "Cancelada",
-            };
-        }
-        return {
-            card: "border-amber-200 bg-gradient-to-r from-amber-50 to-yellow-50 shadow-sm",
-            badge: "bg-amber-500 text-white",
-            label: "Aguardando confirmação",
-        };
-    };
     const isFutureDate = viewedDate > getTodayDateString();
     const isViewingToday = viewedDate === getTodayDateString();
-    const dayProgress = useMemo(() => {
-        const total = habitsForDate.length;
-        const done = habitsForDate.reduce((acc, habit) => (habit.completions[viewedDate] === "COMPLETED" ? acc + 1 : acc), 0);
-        const percent = total > 0 ? Math.round((done / total) * 100) : 0;
-        return { done, total, percent };
-    }, [habitsForDate, viewedDate]);
-    const dayProgressBadgeClassName = useMemo(() => {
-        if (dayProgress.percent >= 100) return "bg-emerald-500 text-white border-emerald-600";
-        if (dayProgress.percent <= 0) return "bg-rose-500 text-white border-rose-600";
-        return "bg-yellow-300 text-yellow-900 border-yellow-400";
-    }, [dayProgress.percent]);
-    const completedHabitsForViewedDate = useMemo(
-        () => habitsForDate.filter((habit) => habit.completions[viewedDate] === "COMPLETED"),
-        [habitsForDate, viewedDate]
-    );
-    const selectedChildDiamonds = useMemo(() => {
-        if (!selectedChild) return 0;
-        return selectedChild.habits.reduce((acc, habit) => {
-            if (habit.source !== "qrsaude") return acc;
-            const completedCount = Object.values(habit.completions || {}).filter((status) => status === "COMPLETED").length;
-            return acc + completedCount;
-        }, 0);
-    }, [selectedChild]);
-
-    const formatShareDate = (isoDate: string) => {
-        const [yyyy, mm, dd] = isoDate.split("-");
-        if (!yyyy || !mm || !dd) return isoDate;
-        return `${dd}/${mm}/${yyyy}`;
-    };
-
-    const wrapCanvasText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number) => {
-        const words = String(text || "").split(/\s+/).filter(Boolean);
-        const lines: string[] = [];
-        let line = "";
-        words.forEach((word) => {
-            const candidate = line ? `${line} ${word}` : word;
-            if (ctx.measureText(candidate).width <= maxWidth) {
-                line = candidate;
-                return;
-            }
-            if (line) lines.push(line);
-            line = word;
-        });
-        if (line) lines.push(line);
-        return lines.length > 0 ? lines : [text];
-    };
-
-    const buildAchievementImageBlob = async (mode: AchievementShareMode, showName: boolean) => {
-        const width = 1080;
-        const height = 1920;
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) throw new Error("Canvas indisponível.");
-
-        const gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, "#5b21b6");
-        gradient.addColorStop(0.45, "#6d28d9");
-        gradient.addColorStop(1, "#4c1d95");
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, width, height);
-
-        ctx.fillStyle = "rgba(255,255,255,0.07)";
-        for (let i = 0; i < 14; i += 1) {
-            const size = 80 + (i % 4) * 26;
-            const x = (i * 127) % width;
-            const y = (i * 143) % height;
-            ctx.beginPath();
-            ctx.arc(x, y, size, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        const profileLabel = showName
-            ? (selectedChild?.preferredName || selectedChild?.name || "Perfil")
-            : "Perfil anônimo";
-
-        const drawRoundRect = (x: number, y: number, w: number, h: number, r: number) => {
-            const radius = Math.min(r, w / 2, h / 2);
-            ctx.beginPath();
-            ctx.moveTo(x + radius, y);
-            ctx.arcTo(x + w, y, x + w, y + h, radius);
-            ctx.arcTo(x + w, y + h, x, y + h, radius);
-            ctx.arcTo(x, y + h, x, y, radius);
-            ctx.arcTo(x, y, x + w, y, radius);
-            ctx.closePath();
-        };
-
-        const loadImageSafe = (src?: string) =>
-            new Promise<HTMLImageElement | null>((resolve) => {
-                if (!src) {
-                    resolve(null);
-                    return;
-                }
-                const img = new Image();
-                img.crossOrigin = "anonymous";
-                img.referrerPolicy = "no-referrer";
-                img.onload = () => resolve(img);
-                img.onerror = () => resolve(null);
-                img.src = src;
-            });
-
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 68px sans-serif";
-        ctx.fillText("Meta batida", 60, 124);
-
-        ctx.fillStyle = "rgba(255,255,255,0.12)";
-        drawRoundRect(width - 332, 52, 272, 138, 28);
-        ctx.fill();
-
-        const chartX = width - 300;
-        const chartY = 92;
-        const bars = [36, 56, 44, 78, 98];
-        bars.forEach((bar, idx) => {
-            ctx.fillStyle = idx < 4 ? "rgba(250,204,21,0.35)" : "rgba(134,239,172,0.9)";
-            drawRoundRect(chartX + idx * 44, chartY + (98 - bar), 24, bar, 8);
-            ctx.fill();
-        });
-        ctx.strokeStyle = "rgba(255,255,255,0.9)";
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(chartX + 12, chartY + 66);
-        ctx.lineTo(chartX + 56, chartY + 42);
-        ctx.lineTo(chartX + 100, chartY + 52);
-        ctx.lineTo(chartX + 144, chartY + 24);
-        ctx.lineTo(chartX + 188, chartY + 8);
-        ctx.stroke();
-        ctx.fillStyle = "#86efac";
-        ctx.beginPath();
-        ctx.arc(chartX + 188, chartY + 8, 8, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = "rgba(255,255,255,0.97)";
-        drawRoundRect(40, 230, width - 80, 1500, 36);
-        ctx.fill();
-
-        ctx.fillStyle = "#5b21b6";
-        ctx.font = "bold 54px sans-serif";
-        const headlineLines = wrapCanvasText(ctx, `Hoje ${profileLabel} completou 100% das metas diárias`, width - 170);
-        let headY = 320;
-        headlineLines.slice(0, 2).forEach((line) => {
-            ctx.fillText(line, 74, headY);
-            headY += 56;
-        });
-
-        ctx.fillStyle = "#6b7280";
-        ctx.font = "bold 34px sans-serif";
-        ctx.fillText(`${dayProgress.done}/${dayProgress.total} tarefas • ${formatShareDate(viewedDate)}`, 74, headY + 16);
-
-        // Bloco de conquistas para deixar o card mais vivo.
-        ctx.fillStyle = "#ede9fe";
-        drawRoundRect(70, headY + 38, width - 140, 104, 20);
-        ctx.fill();
-        ctx.fillStyle = "#6d28d9";
-        ctx.font = "bold 34px sans-serif";
-        ctx.fillText("🏅 Conquistas de hoje", 96, headY + 84);
-        ctx.fillStyle = "#374151";
-        ctx.font = "bold 28px sans-serif";
-        ctx.fillText("Disciplina diária concluída.", 430, headY + 84);
-
-        const maxCards = mode === "summary" ? 1 : mode === "list" ? 3 : 6;
-        const cards = completedHabitsForViewedDate.slice(0, maxCards);
-        const cardTop = headY + 166;
-        const cardBottom = 1518;
-        const rowGap = 18;
-        const rows = Math.max(1, cards.length);
-        const cardAreaW = width - 148;
-        const cardW = Math.min(860, cardAreaW);
-        const availableH = cardBottom - cardTop - Math.max(0, rows - 1) * rowGap;
-        const cardH = Math.max(138, Math.min(186, Math.floor(availableH / rows)));
-        const totalGridH = rows * cardH + Math.max(0, rows - 1) * rowGap;
-        const startY = Math.max(cardTop, cardTop + Math.max(0, Math.floor((cardBottom - cardTop - totalGridH) / 2)));
-
-        const iconEmojiByName: Record<string, string> = {
-            Book: "📘",
-            Toothbrush: "🪥",
-            Bed: "🛌",
-            Broom: "🧹",
-            Backpack: "🎒",
-            Apple: "🍎",
-            Paintbrush: "🎨",
-            Soccer: "⚽",
-            Dog: "🐶",
-            Cat: "🐱",
-            Heart: "❤️",
-            GameController: "🎮",
-            Gift: "🎁",
-            Trophy: "🏆",
-            Tv: "📺",
-            Star: "⭐",
-            Sparkles: "✨",
-        };
-
-        for (let i = 0; i < cards.length; i += 1) {
-            const row = i;
-            const x = Math.floor((width - cardW) / 2);
-            const y = startY + row * (cardH + rowGap);
-
-            ctx.fillStyle = "#f8fafc";
-            drawRoundRect(x, y, cardW, cardH, 24);
-            ctx.fill();
-            ctx.strokeStyle = "#ddd6fe";
-            ctx.lineWidth = 2;
-            drawRoundRect(x, y, cardW, cardH, 24);
-            ctx.stroke();
-
-            const habit = cards[i];
-            const img = await loadImageSafe(habit.imageUrl);
-            const imgX = x + 18;
-            const imgY = y + 18;
-            const imgS = Math.max(84, Math.min(122, cardH - 34));
-            if (img) {
-                ctx.save();
-                drawRoundRect(imgX, imgY, imgS, imgS, 18);
-                ctx.clip();
-                ctx.drawImage(img, imgX, imgY, imgS, imgS);
-                ctx.restore();
-            } else {
-                ctx.fillStyle = "#ede9fe";
-                drawRoundRect(imgX, imgY, imgS, imgS, 18);
-                ctx.fill();
-                ctx.fillStyle = "#7c3aed";
-                ctx.font = "bold 42px sans-serif";
-                const fallbackEmoji = iconEmojiByName[String(habit.icon || "")] || "✨";
-                ctx.fillText(fallbackEmoji, imgX + 28, imgY + 66);
-            }
-
-            const textX = imgX + imgS + 18;
-            ctx.fillStyle = "#1f2937";
-            ctx.font = "bold 36px sans-serif";
-            const nameLines = wrapCanvasText(ctx, habit.name || "Tarefa concluída", cardW - (textX - x) - 86);
-            let textY = y + 58;
-            nameLines.slice(0, 2).forEach((line) => {
-                ctx.fillText(line, textX, textY);
-                textY += 42;
-            });
-
-            ctx.fillStyle = "#6b7280";
-            ctx.font = "bold 27px sans-serif";
-            const periodLabel = getHabitScheduleMeta(habit).label.replace("🕒 ", "").replace("⏰ ", "");
-            ctx.fillText(periodLabel, textX, y + Math.min(cardH - 22, 146));
-
-            const checkCx = x + cardW - 48;
-            const checkCy = y + 44;
-            ctx.fillStyle = "#16a34a";
-            ctx.beginPath();
-            ctx.arc(checkCx, checkCy, 38, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = "#ffffff";
-            ctx.font = "bold 52px sans-serif";
-            ctx.fillText("✓", checkCx - 16, checkCy + 18);
-        }
-
-        if (completedHabitsForViewedDate.length > cards.length) {
-            ctx.fillStyle = "#6b7280";
-            ctx.font = "italic 27px sans-serif";
-            ctx.fillText(`+ ${completedHabitsForViewedDate.length - cards.length} tarefa(s) concluída(s)`, 74, cardBottom + 48);
-        }
-
-        ctx.fillStyle = "#4c1d95";
-        ctx.fillRect(40, 1728, width - 80, 124);
-        ctx.fillStyle = "#fde68a";
-        ctx.font = "bold 34px sans-serif";
-        const ctaLines = wrapCanvasText(ctx, "Acesse habitus (www.habitus.app) e evolua no seu dia-a-dia.", width - 160);
-        const ctaYStart = 1774;
-        ctaLines.slice(0, 2).forEach((line, idx) => {
-            ctx.fillText(line, 68, ctaYStart + idx * 42);
-        });
-
-        const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-        if (!blob) throw new Error("Não foi possível gerar a imagem.");
-        return blob;
-    };
-
-    const downloadAchievementImage = async () => {
-        try {
-            setIsGeneratingAchievementAsset(true);
-            const blob = await buildAchievementImageBlob(achievementShareMode, achievementShowName);
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = `habitus-conquista-${viewedDate}.png`;
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            URL.revokeObjectURL(url);
-            showToast("Imagem salva com sucesso.", "success");
-        } catch (err) {
-            console.error("Falha ao baixar imagem de conquista:", err);
-            showToast("Não foi possível gerar a imagem agora.", "error");
-        } finally {
-            setIsGeneratingAchievementAsset(false);
-        }
-    };
-
-    const shareAchievementImage = async () => {
-        try {
-            setIsGeneratingAchievementAsset(true);
-            const blob = await buildAchievementImageBlob(achievementShareMode, achievementShowName);
-            const file = new File([blob], `habitus-conquista-${viewedDate}.png`, { type: "image/png" });
-            const shareText = `Concluí ${dayProgress.done}/${dayProgress.total} tarefas hoje (${dayProgress.percent}%) no Habitus.`;
-            const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
-            if (typeof nav.share === "function" && nav.canShare?.({ files: [file] })) {
-                await nav.share({
-                    title: "Minha conquista no Habitus",
-                    text: shareText,
-                    files: [file],
-                });
-                showToast("Conquista compartilhada.", "success");
-                return;
-            }
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = `habitus-conquista-${viewedDate}.png`;
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            URL.revokeObjectURL(url);
-            showToast("Seu aparelho não aceita compartilhamento direto. Imagem foi baixada.", "warning");
-        } catch (err) {
-            console.error("Falha ao compartilhar imagem de conquista:", err);
-            showToast("Não foi possível compartilhar agora.", "error");
-        } finally {
-            setIsGeneratingAchievementAsset(false);
-        }
-    };
-
-    const shareAchievementOnWhatsApp = async () => {
-        const shareText = encodeURIComponent(`Concluí ${dayProgress.done}/${dayProgress.total} tarefas hoje (${dayProgress.percent}%) no Habitus!`);
-        window.open(`https://wa.me/?text=${shareText}`, "_blank", "noopener,noreferrer");
-        await downloadAchievementImage();
-    };
 
     useEffect(() => {
         if (!isViewingToday || !selectedChild) return;
@@ -2215,7 +1125,7 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
         const rules = getHabitSwipeRules(habit);
         if (offset >= SWIPE_COMPLETE_THRESHOLD && rules.canSwipeToComplete && selectedChild) {
             setSwipeOffsets({});
-            handleHabitCompleteAction(selectedChild.id, habitId, habit.completions[viewedDate], null);
+            toggleHabitCompletion(selectedChild.id, habitId, viewedDate);
             showToast("Hábito marcado como feito.", "success");
             return;
         }
@@ -2272,94 +1182,6 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
         });
     }, [productRecommendations, latestRewardTags, latestCompletedHabitTags]);
 
-    const mobileHomeBanners = useMemo(() => {
-        type BannerItem = {
-            id: string;
-            type: "master" | "recommendation";
-            title: string;
-            description: string;
-            imageUrl?: string;
-            href?: string;
-        };
-        const items: BannerItem[] = [];
-        if (masterProfessional) {
-            items.push({
-                id: `master:${masterProfessional.id}`,
-                type: "master",
-                title: masterProfessional.name,
-                description: getSpecialtiesLabel(masterProfessional) || "Profissional master da sua região",
-                imageUrl: masterProfessional.photoUrl || "",
-            });
-        }
-        productRecommendations
-            .filter((rec: any) => rec?.isActive !== false)
-            .slice(0, 6)
-            .forEach((rec: any) => {
-                items.push({
-                    id: `rec:${String(rec.id || rec.title || Math.random())}`,
-                    type: "recommendation",
-                    title: String(rec.title || "Recomendação"),
-                    description: String(rec.description || "Conteúdo selecionado para você"),
-                    imageUrl: String(rec.imageUrl || ""),
-                    href: String(rec.linkUrl || ""),
-                });
-            });
-        if (contextualFooterAd) {
-            items.push({
-                id: `contextual:${contextualFooterAd.id}`,
-                type: "recommendation",
-                title: String(contextualFooterAd.title || "Oferta"),
-                description: String(contextualFooterAd.description || "Oferta contextual para você"),
-                imageUrl: String(contextualFooterAd.imageUrl || ""),
-                href: String(contextualFooterAd.linkUrl || ""),
-            });
-        }
-        const unique = items.filter((item, index, arr) => arr.findIndex((i) => i.id === item.id) === index);
-        if (unique.length === 0) return [] as BannerItem[];
-        const target = Math.min(4, Math.max(1, unique.length));
-        const next: BannerItem[] = [];
-        for (let i = 0; i < target; i += 1) {
-            next.push(unique[i % unique.length]);
-        }
-        while (next.length < 4) {
-            next.push(unique[next.length % unique.length]);
-        }
-        return next;
-    }, [masterProfessional, productRecommendations, contextualFooterAd]);
-
-    useEffect(() => {
-        if (mobileHomeBanners.length === 0) {
-            setMobileHomeBannerIndex(0);
-            return;
-        }
-        setMobileHomeBannerIndex((prev) => prev % mobileHomeBanners.length);
-    }, [mobileHomeBanners.length]);
-
-    const activeHomeBanner = useMemo(() => {
-        if (mobileHomeBanners.length === 0) return null;
-        return mobileHomeBanners[mobileHomeBannerIndex % mobileHomeBanners.length];
-    }, [mobileHomeBanners, mobileHomeBannerIndex]);
-
-    useEffect(() => {
-        const container = mobileBannerScrollerRef.current;
-        if (!container || mobileHomeBanners.length <= 1) return;
-        const width = container.clientWidth;
-        if (!width) return;
-        const normalized = mobileHomeBannerIndex % mobileHomeBanners.length;
-        container.scrollTo({ left: normalized * width, behavior: "smooth" });
-    }, [mobileHomeBannerIndex, mobileHomeBanners.length]);
-
-    const handleMobileBannerScroll = () => {
-        const container = mobileBannerScrollerRef.current;
-        if (!container || mobileHomeBanners.length <= 1) return;
-        const width = container.clientWidth || 1;
-        const rawIndex = Math.round(container.scrollLeft / width);
-        const normalized = ((rawIndex % mobileHomeBanners.length) + mobileHomeBanners.length) % mobileHomeBanners.length;
-        if (normalized !== (mobileHomeBannerIndex % mobileHomeBanners.length)) {
-            setMobileHomeBannerIndex(normalized);
-        }
-    };
-
     useEffect(() => {
         if (heroExclusiveProfessional) {
             trackProfessionalEvent(heroExclusiveProfessional.id, "impression", {
@@ -2388,23 +1210,6 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
             trackAdEvent(`footer:${contextualFooterAd.id}`, "impression", { slot: "contextual_footer" });
         }
     }, [contextualFooterAd, trackAdEvent]);
-
-    useEffect(() => {
-        if (!activeHomeBanner) return;
-        if (activeHomeBanner.type === "master") {
-            const masterId = activeHomeBanner.id.replace("master:", "");
-            trackAdEvent(`home_banner:${activeHomeBanner.id}`, "impression", { slot: "home_mobile_carousel" });
-            if (masterId) {
-                trackProfessionalEvent(masterId, "impression", {
-                    source: "dashboard",
-                    slot: "home_mobile_carousel_master",
-                    cityId: familyLocation?.cityId,
-                });
-            }
-            return;
-        }
-        trackAdEvent(`home_banner:${activeHomeBanner.id}`, "impression", { slot: "home_mobile_carousel" });
-    }, [activeHomeBanner, trackAdEvent, trackProfessionalEvent, familyLocation?.cityId]);
 
     const renderMasterBanner = () => {
         if (!masterProfessional) return null;
@@ -2590,7 +1395,6 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                     <>
                         <button onClick={() => { setCurrentView('recommendations'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><GiftIcon className="w-5 h-5 text-gray-500" /> Shopping</button>
                         <button onClick={() => { setCurrentView('supportNetwork'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><UsersIcon className="w-5 h-5 text-gray-500" /> Rede de Serviços Profissionais</button>
-                        <button onClick={() => { setCurrentView('manageLinks'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><ClipboardListIcon className="w-5 h-5 text-gray-500" /> Gerenciar vínculos</button>
                         <button onClick={() => { setCurrentView('favorites'); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold text-sm"><HeartIcon className="w-5 h-5 text-gray-500" /> Meus Favoritos</button>
                     </>
                 )}
@@ -2639,139 +1443,14 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
             case 'supportNetwork':
                 return (
                     <SupportNetworkPage
+                        initialOpenQrScanner={openQrScannerOnSupportNetwork}
+                        incomingQrLink={incomingQrLink}
                         onClose={() => {
+                            setOpenQrScannerOnSupportNetwork(false);
+                            setIncomingQrLink(null);
                             setCurrentView('dashboard');
                         }}
-                        linkedProfessionalIds={familyProfessionalLinks
-                            .filter((link) => link.status === "active")
-                            .map((link) => link.professionalId)}
                     />
-                );
-            case 'routineLibrary':
-                return (
-                    <RoutineLibraryPage
-                        onClose={() => setCurrentView("dashboard")}
-                        templates={routineTemplates}
-                        familyLocation={settings.familyLocation}
-                        importedTemplateIds={importedRoutineTemplateIds}
-                        onToggleImport={toggleRoutineTemplateImport}
-                        initialAreaKey={routineLibraryInitialArea}
-                    />
-                );
-            case 'manageLinks':
-                return (
-                    <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 space-y-4">
-                        <div className="max-w-4xl mx-auto space-y-3">
-                            <div className="bg-white rounded-2xl border border-gray-200 p-4">
-                                <h2 className="text-lg font-bold text-gray-800">Gerenciar vínculos</h2>
-                                <p className="text-sm text-gray-500 mt-1">
-                                    Ajuste pessoas compartilhadas, blocos autorizados e prazo (até 90 dias).
-                                </p>
-                            </div>
-                            {familyProfessionalLinks.length === 0 && (
-                                <div className="bg-white rounded-2xl border border-gray-200 p-4 text-sm text-gray-500">
-                                    Você ainda não possui vínculos ativos.
-                                </div>
-                            )}
-                            {familyProfessionalLinks.map((link) => {
-                                const draft = linkDrafts[link.id];
-                                if (!draft) return null;
-                                const today = new Date();
-                                today.setHours(0, 0, 0, 0);
-                                const maxDate = new Date(today);
-                                maxDate.setDate(maxDate.getDate() + 90);
-                                const maxDateStr = toIsoDate(maxDate.getTime());
-                                const expiresMs = draft.expiresAtDate ? new Date(`${draft.expiresAtDate}T23:59:59`).getTime() : null;
-                                const daysRemaining = expiresMs ? Math.ceil((expiresMs - Date.now()) / (1000 * 60 * 60 * 24)) : null;
-                                const isNearExpiry = daysRemaining !== null && daysRemaining >= 0 && daysRemaining <= 10;
-                                const expiresDateLabel = expiresMs
-                                    ? new Date(expiresMs).toLocaleDateString("pt-BR")
-                                    : null;
-                                return (
-                                    <div key={link.id} className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
-                                        <div className="flex items-center justify-between gap-3">
-                                            <div>
-                                                <p className="text-base font-bold text-gray-800">{link.professionalName}</p>
-                                                <p className="text-xs text-gray-500">ID: {link.professionalId}</p>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => { void handleEndLinkNow(link); }}
-                                                className="px-3 py-1.5 rounded-lg border border-rose-200 text-rose-700 bg-rose-50 text-xs font-bold"
-                                            >
-                                                Encerrar vínculo
-                                            </button>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-bold text-gray-600 mb-2">Pessoas vinculadas</p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {children.map((child) => {
-                                                    const isSelected = draft.linkedChildIds.includes(child.id);
-                                                    return (
-                                                        <button
-                                                            key={`${link.id}-${child.id}`}
-                                                            type="button"
-                                                            onClick={() => handleToggleLinkChild(link.id, child.id)}
-                                                            className={`px-2 py-1 rounded-full text-xs font-semibold border ${
-                                                                isSelected ? "bg-purple-600 text-white border-purple-600" : "bg-white text-gray-600 border-gray-200"
-                                                            }`}
-                                                        >
-                                                            {child.name}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                        <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-                                            <p className="text-xs font-bold text-gray-600">Blocos autorizados</p>
-                                            <label className="flex items-center gap-2 text-sm text-gray-700">
-                                                <input type="checkbox" checked={draft.consentBlocks.personal} onChange={() => handleToggleLinkBlock(link.id, "personal")} />
-                                                Informações pessoais
-                                            </label>
-                                            <label className="flex items-center gap-2 text-sm text-gray-700">
-                                                <input type="checkbox" checked={draft.consentBlocks.profile} onChange={() => handleToggleLinkBlock(link.id, "profile")} />
-                                                Perfil e rotina
-                                            </label>
-                                            <label className="flex items-center gap-2 text-sm text-gray-700">
-                                                <input type="checkbox" checked={draft.consentBlocks.health} onChange={() => handleToggleLinkBlock(link.id, "health")} />
-                                                Saúde
-                                            </label>
-                                        </div>
-                                        <div className="grid gap-2 md:grid-cols-[260px_1fr] items-start">
-                                            <div>
-                                                <label className="block text-xs font-bold text-gray-600 mb-1">Encerrar vínculo em</label>
-                                                <input
-                                                    type="date"
-                                                    value={draft.expiresAtDate}
-                                                    min={getTodayDateString()}
-                                                    max={maxDateStr}
-                                                    onChange={(e) => updateLinkDraft(link.id, (prev) => ({ ...prev, expiresAtDate: e.target.value }))}
-                                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                                                />
-                                                <p className="text-[11px] text-gray-500 mt-1">Opcional. Máximo de 90 dias.</p>
-                                            </div>
-                                            <div className="pt-1">
-                                                {isNearExpiry && expiresDateLabel && (
-                                                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
-                                                        Vínculo encerrará no dia {expiresDateLabel} (alterar?)
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="flex justify-end">
-                                            <button
-                                                type="button"
-                                                onClick={() => { void handleSaveLinkDraft(link); }}
-                                                className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold hover:bg-purple-700"
-                                            >
-                                                Salvar alterações
-                                            </button>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
                 );
             case 'favorites':
                 return (
@@ -2801,142 +1480,49 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
             default:
                 return (
                     <div className="flex-1 flex flex-col h-full overflow-hidden">
-                        <header className="md:hidden bg-gradient-to-b from-purple-700 via-purple-700 to-purple-600 border-b border-purple-500 px-4 py-1.5 z-10 space-y-1">
-                            <div className="flex items-center justify-between">
-                                <div className="inline-flex h-8 items-center gap-1 rounded-lg border border-purple-300 bg-white/95 px-2 text-[11px] font-semibold text-purple-900">
-                                    <MapPinIcon className="w-3.5 h-3.5 text-purple-700" />
-                                    <span className="max-w-[170px] truncate">{mobileLocationLabel}</span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <button
-                                        onClick={() => setIsNotificationsOpen((prev) => !prev)}
-                                        className="relative inline-flex h-8 w-8 items-center justify-center rounded-lg border border-yellow-300 bg-yellow-100 text-purple-800"
-                                        aria-label="Notificações"
-                                        title="Notificações"
-                                    >
-                                        <BellIcon className="w-4 h-4" />
-                                        {unreadNotificationsCount > 0 && (
-                                            <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold leading-4 text-center">
-                                                {unreadNotificationsCount > 9 ? "9+" : unreadNotificationsCount}
-                                            </span>
-                                        )}
-                                    </button>
-                                    <button
-                                        onClick={() => setIsMenuOpen(true)}
-                                        className="inline-flex h-8 w-8 items-center justify-center text-purple-800 rounded-lg border border-yellow-300 bg-yellow-100"
-                                        aria-label="Menu"
-                                        title="Menu"
-                                    >
-                                        <MenuIcon className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </div>
-                            <div
-                                className="flex gap-2 overflow-x-auto no-scrollbar pb-0.5"
-                                style={{ msOverflowStyle: "none", scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
-                                onScroll={handleAreasScroll}
-                            >
+                        <header className="md:hidden bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between z-10">
+                            <button onClick={() => setIsMenuOpen(true)} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg">
+                                <MenuIcon />
+                            </button>
+                            <h1 className="font-bold text-purple-700">Habitus App</h1>
+                            <div className="flex items-center gap-1">
                                 <button
-                                    type="button"
-                                    onClick={() => {
-                                        setMobileProfessionalArea("all");
-                                        try {
-                                            window.localStorage.setItem("supportNetworkPrefilters", JSON.stringify({ searchQuery: "", selectedArea: "all" }));
-                                        } catch {}
-                                        setCurrentView("supportNetwork");
-                                    }}
-                                    className="px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap bg-white text-gray-700 border-purple-200"
+                                    onClick={() => setIsNotificationsOpen((prev) => !prev)}
+                                    className="relative p-1.5 rounded-lg border border-purple-200 bg-purple-50 text-purple-700"
+                                    aria-label="Notificações"
+                                    title="Notificações"
                                 >
-                                    Tudo
+                                    <BellIcon className="w-4 h-4" />
+                                    {unreadNotificationsCount > 0 && (
+                                        <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold leading-4 text-center">
+                                            {unreadNotificationsCount > 9 ? "9+" : unreadNotificationsCount}
+                                        </span>
+                                    )}
                                 </button>
-                                {mobileProfessionalAreas.filter((item) => item.key !== "all").map((area) => (
-                                    <button
-                                        key={`chip-${area.key}`}
-                                        type="button"
-                                        onClick={() => {
-                                            setMobileProfessionalArea(area.key);
-                                            try {
-                                                window.localStorage.setItem("supportNetworkPrefilters", JSON.stringify({ searchQuery: "", selectedArea: area.key }));
-                                            } catch {}
-                                            setCurrentView("supportNetwork");
-                                        }}
-                                        className="px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap bg-white text-gray-700 border-purple-200"
-                                    >
-                                        {area.label}
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="rounded-xl border border-purple-300 bg-white p-1.5">
-                                {mobileHomeBanners.length > 0 ? (
-                                    <div
-                                        ref={mobileBannerScrollerRef}
-                                        onScroll={handleMobileBannerScroll}
-                                        className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar"
-                                    >
-                                        {mobileHomeBanners.map((banner) => (
-                                            <button
-                                                key={`mobile-banner-${banner.id}`}
-                                                type="button"
-                                                onClick={() => {
-                                                    if (banner.type === "master") {
-                                                        trackAdEvent(`home_banner:${banner.id}`, "click", { slot: "home_mobile_carousel" });
-                                                        setCurrentView("supportNetwork");
-                                                        return;
-                                                    }
-                                                    if (banner.href) {
-                                                        trackAdEvent(`home_banner:${banner.id}`, "click", { slot: "home_mobile_carousel" });
-                                                        window.open(banner.href, "_blank", "noopener,noreferrer");
-                                                    }
-                                                }}
-                                                className="w-full shrink-0 snap-center text-left relative flex items-center gap-3 rounded-xl border border-purple-200 bg-purple-50 px-3 py-3 min-h-[86px]"
-                                            >
-                                                {banner.imageUrl ? (
-                                                    <img src={banner.imageUrl} alt={banner.title} className="w-14 h-14 rounded-lg object-cover border border-purple-200" />
-                                                ) : (
-                                                    <GiftIcon className="w-6 h-6 text-purple-600" />
-                                                )}
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-[13px] font-bold text-purple-800 line-clamp-1 leading-tight">{banner.title}</p>
-                                                    <p className="text-[12px] text-purple-600 line-clamp-2 leading-snug">{banner.description}</p>
-                                                </div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <AdSlot placement="MOBILE_BANNER" />
-                                )}
-                            </div>
-                            <div
-                                className="flex items-center gap-2 overflow-x-auto whitespace-nowrap no-scrollbar pb-0.5"
-                                style={{ msOverflowStyle: "none", scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
-                                onScroll={handleRoutineScroll}
-                            >
-                                {routineLibraryAreas.map((area) => (
-                                    <button
-                                        key={`theme-${area.key}`}
-                                        type="button"
-                                        onClick={() => {
-                                            setRoutineLibraryInitialArea(area.key);
-                                            setCurrentView("routineLibrary");
-                                        }}
-                                        className="text-[11px] font-semibold text-white whitespace-nowrap"
-                                    >
-                                        {area.label}
-                                    </button>
-                                ))}
+                                <button
+                                    onClick={() => {
+                                        setOpenQrScannerOnSupportNetwork(true);
+                                        setCurrentView('supportNetwork');
+                                    }}
+                                    className="px-2 py-1 rounded-lg border border-purple-200 bg-purple-50 text-[10px] font-bold text-purple-700"
+                                    aria-label="Scan QRSaúde"
+                                    title="Scan QRSaúde"
+                                >
+                                    Scan QRSaúde
+                                </button>
                             </div>
                         </header>
                         {isNotificationsOpen && (
-                            <div className="md:hidden bg-purple-600/95 border-b border-purple-500 px-4 py-2">
+                            <div className="md:hidden bg-white border-b border-gray-100 px-4 py-2">
                                 <div className="mb-2 flex items-center justify-between">
-                                    <p className="text-[11px] font-semibold text-purple-100">
+                                    <p className="text-[11px] font-semibold text-gray-500">
                                         {unreadNotificationsCount} não lida(s) • {readNotificationsCount} lida(s)
                                     </p>
                                     <button
                                         type="button"
                                         onClick={() => { void clearReadNotifications(); }}
                                         disabled={readNotificationsCount === 0}
-                                        className="text-[11px] font-bold text-yellow-200 disabled:text-purple-300"
+                                        className="text-[11px] font-bold text-rose-700 disabled:text-gray-300"
                                     >
                                         Apagar lidas
                                     </button>
@@ -2951,17 +1537,7 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                             }`}
                                         >
                                             <button
-                                                onClick={() => {
-                                                    if (item.type === "PRO_LINK_CPF_REQUEST" && item.metadata?.requestId) {
-                                                        void openProfessionalLinkRequestModal(
-                                                            item.id,
-                                                            String(item.metadata.requestId),
-                                                            String(item.metadata.professionalName || "")
-                                                        );
-                                                        return;
-                                                    }
-                                                    void markNotificationAsRead(item.id);
-                                                }}
+                                                onClick={() => { void markNotificationAsRead(item.id); }}
                                                 className="w-full text-left"
                                             >
                                                 <p className="text-xs font-bold text-gray-800">{item.title || "Notificação"}</p>
@@ -2984,36 +1560,39 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                             </div>
                         )}
 
-                        <div className="flex-1 overflow-y-auto px-4 pt-0 pb-32 md:p-6 md:pb-28 space-y-6 custom-scrollbar">
+                        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 pb-28 custom-scrollbar">
                             {masterProfessional && (
                                 <>
+                                    <div className="md:hidden sticky top-0 z-30 -mx-4 px-4 pt-1 pb-2 bg-gray-50/95 backdrop-blur-sm border-b border-gray-100">
+                                        {renderMasterBanner()}
+                                    </div>
                                     <div className="hidden md:block mb-2">
                                         {renderMasterBanner()}
                                     </div>
                                 </>
                             )}
                             {children.length > 0 && (
-                                <div className="md:hidden sticky top-0 z-20 mt-0 mb-1 bg-white border-y border-gray-100 pt-0.5 pb-0.5 shadow-sm isolate">
+                                <div className="md:hidden -mt-2 mb-3">
                                     <div className="relative">
-                                        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                                        <div className="pointer-events-none absolute left-0 top-0 z-20 h-full w-8 bg-gradient-to-r from-white to-transparent" />
+                                        <div className="flex items-center gap-2 overflow-x-auto pb-1">
                                         {canWriteChildren && !isAdmin && (
                                             <button
                                                 type="button"
-                                                onClick={handleOpenAddChildModal}
-                                                disabled={hasReachedFreemiumProfileLimit}
-                                                className="sticky left-0 z-10 flex items-center gap-1 px-2.5 py-1 rounded-full border border-purple-200 bg-purple-50 text-purple-700 text-[10px] font-bold whitespace-nowrap shadow-sm disabled:opacity-50"
+                                                onClick={() => setAddChildModalOpen(true)}
+                                                className="sticky left-0 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-purple-200 bg-purple-50 text-purple-700 text-[11px] font-bold whitespace-nowrap shadow-sm"
                                                 aria-label="Adicionar pessoa"
                                                 title="Adicionar pessoa"
                                             >
-                                                <UsersIcon className="w-3.5 h-3.5" />
-                                                <PlusIcon className="w-3 h-3" />
+                                                <UsersIcon className="w-4 h-4" />
+                                                <PlusIcon className="w-3.5 h-3.5" />
                                             </button>
                                         )}
                                         {children.map((child) => (
                                             <button
                                                 key={child.id}
                                                 onClick={() => handleSelectChild(child)}
-                                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-semibold whitespace-nowrap ${
+                                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[11px] font-semibold whitespace-nowrap ${
                                                     selectedChildId === child.id
                                                         ? "bg-purple-600 text-white border-purple-600"
                                                         : "bg-white text-gray-600 border-gray-200"
@@ -3023,156 +1602,88 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                     avatar={child.avatar}
                                                     alt={child.name}
                                                     emojiClassName="text-base"
-                                                    imageClassName="w-4.5 h-4.5 rounded-full object-cover border border-white/40"
+                                                    imageClassName="w-5 h-5 rounded-full object-cover border border-white/40"
                                                 />
                                                 <span className="max-w-[90px] truncate">{child.name}</span>
-                                                {isPrincipalProfile(child.id) && (
-                                                    <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${selectedChildId === child.id ? "bg-white/20 text-white" : "bg-purple-100 text-purple-700"}`}>
-                                                        #1
-                                                    </span>
-                                                )}
                                             </button>
                                         ))}
                                     </div>
-                                    <div className="mt-1 h-1 w-16 rounded-full bg-purple-300" />
                                     </div>
                                 </div>
                             )}
                             {selectedChild ? (
                                 <div className="max-w-4xl mx-auto">
-                                    <div className="bg-white/95 p-4 md:p-6 rounded-2xl shadow-[0_12px_28px_-18px_rgba(76,29,149,.45)] border border-purple-100 mb-6 -mt-6 backdrop-blur-sm">
-                                        <div className="-mt-1 mb-3 space-y-2">
-                                            <div className="relative flex items-center justify-center">
-                                                <div className="absolute left-0 flex items-center gap-1">
-                                                    {isViewingToday && (
-                                                        <span className="text-[11px] font-black px-2 py-1 rounded-full bg-purple-600 text-white">
-                                                            Hoje
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => showToast("Seção de desafios será liberada em breve.", "warning")}
-                                                    className="text-xs font-bold text-orange-600"
-                                                >
-                                                    🔥 Desafio
-                                                </button>
-                                                <span className={`absolute right-0 text-[10px] font-black px-2 py-1 rounded-full border ${dayProgressBadgeClassName}`}>
-                                                    {dayProgress.done}/{dayProgress.total} {dayProgress.percent}%
-                                                </span>
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+                                        <div
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => setCurrentView("dashboard")}
+                                            onKeyDown={(event) => {
+                                                if (event.key === "Enter" || event.key === " ") {
+                                                    setCurrentView("dashboard");
+                                                }
+                                            }}
+                                            className="flex items-start sm:items-center gap-3 sm:gap-4 text-left cursor-pointer w-full min-w-0"
+                                            aria-label="Voltar para o quadro de tarefas"
+                                        >
+                                            <div className="relative group">
+                                                <ChildAvatar
+                                                    avatar={selectedChild.avatar}
+                                                    alt={selectedChild.name}
+                                                    emojiClassName="text-4xl sm:text-6xl"
+                                                    imageClassName="w-14 h-14 sm:w-20 sm:h-20 rounded-full object-cover border border-purple-100"
+                                                />
+                                                {canWriteChildren && (
+                                                    <button onClick={(event) => { event.stopPropagation(); setEditingChild(selectedChild); }} className="absolute -bottom-1 -right-1 p-1.5 bg-white shadow-md rounded-full text-gray-400 hover:text-purple-600 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <PencilIcon className="w-4 h-4" />
+                                                    </button>
+                                                )}
                                             </div>
-                                            {dayProgress.percent >= 100 && (
-                                                <div className="flex justify-end -mt-1">
+                                            <div className="min-w-0">
+                                                <h2 className="text-xl sm:text-3xl font-bold flex items-center gap-1.5 sm:gap-3 flex-wrap">
+                                                    <span className="flex items-center gap-2 min-w-0">
+                                                        <span className="truncate max-w-[180px] sm:max-w-none">{selectedChild.name}</span>
+                                                    </span>
+                                                    {selectedChild.birthDate && selectedChild.showAgeInfo && (
+                                                        <span className="text-gray-400 text-base sm:text-lg font-medium">{calculateAge(selectedChild.birthDate)} anos</span>
+                                                    )}
+                                                    {renderBirthdayInfo(selectedChild)}
+                                                </h2>
+                                                <div className="mt-1 flex flex-wrap items-center gap-2 sm:gap-3">
+                                                    <div className="flex items-center gap-1.5 text-yellow-500 font-bold bg-yellow-50 px-2.5 py-1 rounded-full text-sm sm:text-base">
+                                                        <StarIcon className="w-5 h-5" /> <span>{selectedChild.stars}</span>
+                                                    </div>
                                                     <button
-                                                        type="button"
-                                                        onClick={() => setAchievementShareOpen(true)}
-                                                        className="inline-flex items-center gap-1 rounded-full border border-purple-300 bg-purple-50 px-2.5 py-1 text-[10px] font-bold text-purple-700"
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            setRewardShopOpen(true);
+                                                        }}
+                                                        className="inline-flex items-center justify-center h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-white text-purple-700 border border-purple-200 hover:bg-purple-50 transition-colors shadow-lg shadow-purple-500/20"
+                                                        aria-label={`Abrir recompensas de ${selectedChild.name}`}
+                                                        title="Recompensas"
                                                     >
-                                                        😄 Causar inveja
+                                                        <GiftIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                                                     </button>
                                                 </div>
-                                            )}
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-sm font-semibold text-gray-700 capitalize">{viewedWeekdayLabel}</span>
-                                                <span className="text-sm font-semibold text-gray-500">{viewedMonthYearLabel}</span>
-                                            </div>
-                                            <div className="grid grid-cols-7 gap-1.5 rounded-2xl border border-purple-100 bg-gradient-to-r from-purple-50/60 to-fuchsia-50/50 p-2">
-                                                {weekDayLetters.map((letter, idx) => {
-                                                    const date = weekDates[idx];
-                                                    const iso = toIsoLocalDate(date);
-                                                    const isTodayCell = iso === getTodayDateString();
-                                                    const isSelectedCell = iso === viewedDate;
-                                                    return (
-                                                        <button
-                                                            key={`week-${iso}`}
-                                                            type="button"
-                                                            onClick={() => setViewedDate(iso)}
-                                                            className={`rounded-xl py-1.5 text-center border transition ${
-                                                                isSelectedCell
-                                                                    ? "border-purple-500 bg-purple-50 shadow-sm"
-                                                                    : "border-transparent bg-gray-50 hover:bg-gray-100"
-                                                            }`}
-                                                        >
-                                                            <div className="text-[10px] font-black text-gray-500">{letter}</div>
-                                                            <div className={`text-[11px] font-black ${isTodayCell ? "text-white bg-purple-700 ring-2 ring-purple-200 rounded-full w-6 h-6 mx-auto flex items-center justify-center shadow-sm" : "text-gray-700"}`}>
-                                                                {date.getDate()}
-                                                            </div>
-                                                        </button>
-                                                    );
-                                                })}
                                             </div>
                                         </div>
-                                        {appointmentsForViewedDate.length > 0 && (
-                                            <div className="mb-3 space-y-2.5">
-                                                <p className="text-xs font-black uppercase tracking-wide text-slate-600">Consultas do dia</p>
-                                                {appointmentsForViewedDate.map((appointment) => {
-                                                    const status = appointment.patientStatus;
-                                                    const visual = getFamilyAppointmentVisual(appointment);
-                                                    return (
-                                                        <div
-                                                            key={`appt-card-${appointment.id}`}
-                                                            className={`rounded-2xl border p-3.5 ${visual.card} transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-md`}
-                                                        >
-                                                            <div className="flex items-start justify-between gap-2">
-                                                                <div>
-                                                                    <p className="text-sm font-black text-slate-800">
-                                                                        {new Date(appointment.startsAtIso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} • {appointment.childName}
-                                                                    </p>
-                                                                    {appointment.tags.length > 0 && (
-                                                                        <div className="mt-1 flex flex-wrap gap-1.5">
-                                                                            {appointment.tags.map((tag) => (
-                                                                                <span key={`${appointment.id}-${tag}`} className="px-2 py-0.5 rounded-full text-[10px] font-semibold border border-slate-200 bg-white/90 text-slate-700 shadow-sm">
-                                                                                    {tag}
-                                                                                </span>
-                                                                            ))}
-                                                                        </div>
-                                                                    )}
-                                                                    {appointment.notes && (
-                                                                        <p className="text-[11px] text-slate-700 mt-1 line-clamp-2">{appointment.notes}</p>
-                                                                    )}
-                                                                    {status === "cancelled" && appointment.cancelledByProfessional && (
-                                                                        <p className="text-[11px] mt-1 font-black text-rose-700">Esta consulta foi cancelada pelo profissional.</p>
-                                                                    )}
-                                                                </div>
-                                                                <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${visual.badge}`}>
-                                                                    {visual.label}
-                                                                </span>
-                                                            </div>
-                                                            <div className="mt-2.5 flex flex-wrap gap-2">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => { void handleConfirmAppointment(appointment.id); }}
-                                                                    disabled={status !== "pending"}
-                                                                    className={`h-9 px-3.5 rounded-xl text-xs font-black shadow-sm ${
-                                                                        status === "confirmed" ? "bg-blue-600 text-white" : "bg-amber-500 text-white hover:bg-amber-600"
-                                                                    } disabled:opacity-80`}
-                                                                >
-                                                                    Confirmar consulta
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => { void handleCancelAppointment(appointment.id); }}
-                                                                    disabled={status === "cancelled"}
-                                                                    className="h-9 px-3.5 rounded-xl bg-rose-600 text-white text-xs font-black shadow-sm hover:bg-rose-700 disabled:opacity-80"
-                                                                >
-                                                                    X Cancelar consulta
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
+                                    </div>
+
+                                    <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-5">
+                                            <h3 className="text-base sm:text-lg font-semibold">
+                                                {isViewingToday ? "Rotinas de Hoje" : `Rotinas de ${getFormattedDateTitle(viewedDate)}`} ({getWeekdayName(viewedDate)})
+                                            </h3>
+                                            <div className="w-full sm:w-auto flex items-center gap-2 sm:gap-3">
+                                                <input type="date" value={viewedDate} onChange={(e) => setViewedDate(e.target.value)} className="w-full sm:w-auto text-sm px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 h-10" />
+                                                {canWriteHabits && (
+                                                    <button onClick={() => setAddHabitModalOpen(true)} className="flex-shrink-0 flex items-center justify-center gap-2 h-10 w-10 sm:w-auto sm:px-4 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-all active:scale-95" aria-label="Adicionar novo hábito">
+                                                        <PlusIcon className="w-5 h-5" />
+                                                        <span className="hidden sm:inline text-sm font-bold">Hábito</span>
+                                                    </button>
+                                                )}
                                             </div>
-                                        )}
-                                        {appointmentsForViewedDate.length === 0 && nextAppointmentForSelectedChild && (
-                                            <div className="mb-3 rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50 to-cyan-50 px-3.5 py-2.5 shadow-sm animate-[fadeIn_.25s_ease-out]">
-                                                <p className="text-[11px] font-black text-sky-900">
-                                                    Próxima consulta em {new Date(nextAppointmentForSelectedChild.startsAtIso).toLocaleDateString("pt-BR")} às {new Date(nextAppointmentForSelectedChild.startsAtIso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.
-                                                </p>
-                                                <p className="text-[10px] text-sky-700 mt-0.5">
-                                                    Selecione esse dia no calendário para confirmar ou cancelar.
-                                                </p>
-                                            </div>
-                                        )}
+                                        </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
                                             {habitsForDate.map((habit, index) => {
                                                 const Icon = HABIT_ICONS[habit.icon];
@@ -3190,9 +1701,6 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                     : isPending
                                                     ? 'bg-white text-yellow-500'
                                                     : `${categoryStyle?.iconBg ?? 'bg-white'} ${categoryStyle?.icon ?? 'text-purple-500'}`;
-                                                const cardThumbUrl = isQrSaude
-                                                    ? (habit.prescribedByProfessionalPhotoUrl || habit.imageUrl || "")
-                                                    : (habit.imageUrl || "");
                                                 const swipeRules = getHabitSwipeRules(habit);
                                                 const canSwipeToComplete = swipeRules.canSwipeToComplete;
                                                 const canSwipeToAction = swipeRules.canSwipeToAction;
@@ -3250,40 +1758,37 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                                 </div>
                                                             )}
                                                             <div
-                                                                className={`grid grid-cols-[56px,1fr,76px] items-start gap-2 p-2 sm:p-2 rounded-xl border transition-transform ${canHandleSwipe ? "" : "transition-all"} ${bgColor} ${qrSaudeBorderClass}`}
+                                                                className={`grid grid-cols-[auto,1fr,auto] items-center gap-2.5 p-2.5 sm:p-2 rounded-xl border ${canSwipeToAction ? "min-h-[92px]" : ""} transition-transform ${canHandleSwipe ? "" : "transition-all"} ${bgColor} ${qrSaudeBorderClass}`}
                                                                 style={canHandleSwipe ? { transform: `translateX(${swipeOffset}px)` } : undefined}
                                                                 onTouchStart={canHandleSwipe ? (event) => beginHabitSwipe(habit.id, event) : undefined}
                                                                 onTouchMove={canHandleSwipe ? moveHabitSwipe : undefined}
                                                                 onTouchEnd={canHandleSwipe ? () => endHabitSwipe(habit.id) : undefined}
                                                                 onTouchCancel={canHandleSwipe ? () => endHabitSwipe(habit.id) : undefined}
                                                             >
-                                                                <div className="flex flex-col items-center gap-1">
-                                                                    <div className={`h-10 w-10 sm:h-11 sm:w-11 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0 ${iconClasses}`}>
-                                                                        {cardThumbUrl ? (
-                                                                            <img src={cardThumbUrl} alt={habit.name} className="w-full h-full object-cover" />
-                                                                        ) : (
-                                                                            <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
-                                                                        )}
-                                                                    </div>
-                                                                    <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-bold leading-tight text-center ${scheduleMeta.className}`}>
-                                                                        {scheduleMeta.label}
-                                                                    </span>
+                                                                <div className={`h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0 ${iconClasses}`}>
+                                                                    {habit.imageUrl ? (
+                                                                        <img src={habit.imageUrl} alt={habit.name} className="w-full h-full object-cover" />
+                                                                    ) : (
+                                                                        <Icon className="w-6 h-6 sm:w-7 sm:h-7" />
+                                                                    )}
                                                                 </div>
                                                                 <div className="min-w-0">
-                                                                    <span className={`text-[12px] sm:text-[13px] font-bold block leading-tight break-words line-clamp-2 ${isCompleted ? 'text-green-800' : 'text-gray-800'}`}>{habit.name}</span>
-                                                                    {isQrSaude && habit.prescribedByProfessionalName && (
-                                                                        <div className="mt-0.5 text-[9px] text-amber-700 font-semibold line-clamp-1">
-                                                                            {habit.prescribedByProfessionalName}
+                                                                    <span className={`text-[13px] sm:text-sm font-bold block leading-tight break-words line-clamp-2 ${isCompleted ? 'text-green-800' : 'text-gray-800'}`}>{habit.name}</span>
+                                                                    <span className={`inline-flex mt-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold ${scheduleMeta.className}`}>
+                                                                        {scheduleMeta.label}
+                                                                    </span>
+                                                                    {isQrSaude && (
+                                                                        <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-amber-700 font-semibold">
+                                                                            {habit.prescribedByProfessionalPhotoUrl ? (
+                                                                                <img src={habit.prescribedByProfessionalPhotoUrl} alt={habit.prescribedByProfessionalName || "Profissional"} className="w-4 h-4 rounded-full object-cover border border-amber-300" />
+                                                                            ) : null}
+                                                                            <span>QRSaude • {habit.prescribedByProfessionalName || "Profissional"}</span>
                                                                         </div>
                                                                     )}
-                                                                    <div className="mt-0.5 flex items-start gap-1 text-[9px] sm:text-[10px] text-gray-500 min-w-0">
+                                                                    <div className="mt-0.5 flex items-start gap-1 text-[10px] sm:text-[11px] text-gray-500 min-w-0">
                                                                         <span className={`${rewardClass} font-bold flex items-center gap-0.5 shrink-0`}>
-                                                                            {isQrSaude
-                                                                                ? "+1 💎"
-                                                                                : habit.reward.type === 'STARS'
-                                                                                    ? `+${habit.reward.value}`
-                                                                                    : habit.reward.activityName}
-                                                                            {!isQrSaude && habit.reward.type === 'STARS' && <StarIcon className="w-3.5 h-3.5" />}
+                                                                            {habit.reward.type === 'STARS' ? `+${habit.reward.value}` : habit.reward.activityName}
+                                                                            {habit.reward.type === 'STARS' && <StarIcon className="w-3.5 h-3.5" />}
                                                                         </span>
                                                                         {habit.sponsorNote && (
                                                                             <span className="text-[9px] sm:text-[10px] leading-tight text-gray-500 line-clamp-2 break-words min-w-0">
@@ -3292,15 +1797,15 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                                         )}
                                                                     </div>
                                                                 </div>
-                                                                <div className="w-[76px] flex flex-col items-end gap-1 flex-shrink-0">
-                                                                    <div className="flex items-center justify-end gap-1">
+                                                                <div className="ml-1 sm:ml-2 w-[72px] sm:w-[84px] flex flex-col items-end gap-1 flex-shrink-0">
+                                                                    <div className="flex items-center gap-1.5">
                                                                         {isFutureDate ? (
-                                                                            <span className="text-[9px] font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Agendado</span>
+                                                                            <span className="text-[11px] font-bold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">Agendado</span>
                                                                         ) : isPending ? (
                                                                             canMarkHabits ? (
                                                                                 <>
-                                                                                    <button onClick={() => rejectHabitCompletion(selectedChild.id, habit.id, viewedDate)} className="h-8 w-8 sm:h-8 sm:w-8 flex items-center justify-center text-red-500 hover:bg-red-100 rounded-lg transition-colors active:scale-95"><XCircleIcon className="w-4.5 h-4.5" /></button>
-                                                                                    <button onClick={(event) => handleHabitCompleteAction(selectedChild.id, habit.id, habit.completions[viewedDate], event.currentTarget)} className="h-8 w-8 sm:h-8 sm:w-8 flex items-center justify-center text-green-500 hover:bg-green-100 rounded-lg transition-colors active:scale-95"><CheckCircleIcon className="w-4.5 h-4.5" /></button>
+                                                                                    <button onClick={() => rejectHabitCompletion(selectedChild.id, habit.id, viewedDate)} className="h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center text-red-500 hover:bg-red-100 rounded-xl transition-colors active:scale-95"><XCircleIcon className="w-5 h-5" /></button>
+                                                                                    <button onClick={() => toggleHabitCompletion(selectedChild.id, habit.id, viewedDate)} className="h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center text-green-500 hover:bg-green-100 rounded-xl transition-colors active:scale-95"><CheckCircleIcon className="w-5 h-5" /></button>
                                                                                 </>
                                                                             ) : null
                                                                         ) : (
@@ -3312,16 +1817,16 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                                                             target="_blank"
                                                                                             rel="noopener noreferrer"
                                                                                             onClick={() => trackAdEvent(`qrsaude:${habit.id}`, "click", { slot: "habit_whatsapp_proof" })}
-                                                                                            className="h-8 px-2 rounded-lg transition-all font-bold text-[9px] flex items-center justify-center bg-emerald-500 text-white active:scale-95"
+                                                                                            className="h-9 px-2 sm:h-8 rounded-lg transition-all font-bold text-[10px] flex items-center justify-center bg-emerald-500 text-white active:scale-95"
                                                                                         >
                                                                                             WhatsApp
                                                                                         </a>
                                                                                     ) : (
-                                                                                        <button onClick={(event) => handleHabitCompleteAction(selectedChild.id, habit.id, habit.completions[viewedDate], event.currentTarget)} className={`h-8 w-8 rounded-lg transition-all font-bold text-[9px] flex items-center justify-center active:scale-95 ${isCompleted ? 'bg-green-500 text-white' : 'bg-white text-gray-400 hover:text-purple-600 border border-gray-200 shadow-sm'}`}>{isCompleted ? <CheckCircleIcon className="w-4 h-4 text-white" /> : 'OK'}</button>
+                                                                                        <button onClick={() => toggleHabitCompletion(selectedChild.id, habit.id, viewedDate)} className={`h-10 w-10 sm:h-9 sm:w-9 rounded-lg transition-all font-bold text-[10px] flex items-center justify-center active:scale-95 ${isCompleted ? 'bg-green-500 text-white' : 'bg-white text-gray-400 hover:text-purple-600 border border-gray-200 shadow-sm'}`}>{isCompleted ? <CheckCircleIcon className="w-4 h-4 text-white" /> : 'OK'}</button>
                                                                                     )
                                                                                 )}
                                                                                 {canWriteHabits && (
-                                                                                    <button onClick={() => setConfirmingDelete({ childId: selectedChild.id, habitId: habit.id, habitName: habit.name, date: viewedDate })} className="h-8 w-8 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"><TrashIcon className="w-4 h-4" /></button>
+                                                                                    <button onClick={() => setConfirmingDelete({ childId: selectedChild.id, habitId: habit.id, habitName: habit.name, date: viewedDate })} className="h-10 w-10 sm:h-9 sm:w-9 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"><TrashIcon className="w-4 h-4" /></button>
                                                                                 )}
                                                                             </>
                                                                         )}
@@ -3352,6 +1857,14 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                     </React.Fragment>
                                                 );
                                             })}
+                                            {habitsForDate.length === 0 && (
+                                                <div className="text-center py-10">
+                                                    <p className="text-gray-500 text-sm">Nenhum hábito para esta data.</p>
+                                                    {canWriteHabits && (
+                                                        <button onClick={() => setAddHabitModalOpen(true)} className="mt-2 text-purple-600 font-bold text-sm">+ Adicionar um hábito</button>
+                                                    )}
+                                                </div>
+                                            )}
                                             {habitsForDate.length === 0 && heroExclusiveProfessional && (
                                                 <div className="col-span-full">
                                                     {renderServiceSpotlight(heroExclusiveProfessional, { inline: true })}
@@ -3394,9 +1907,8 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                                 <div className="mt-5 flex flex-col sm:flex-row gap-2 sm:gap-3">
                                                     {canWriteChildren && !isAdmin && (
                                                         <button
-                                                            onClick={handleOpenAddChildModal}
-                                                            disabled={hasReachedFreemiumProfileLimit}
-                                                            className="px-4 py-2 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-700 transition-colors disabled:opacity-50"
+                                                            onClick={() => setAddChildModalOpen(true)}
+                                                            className="px-4 py-2 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-700 transition-colors"
                                                         >
                                                             Adicionar pessoa para iniciar
                                                         </button>
@@ -3424,6 +1936,43 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                 </div>
                             )}
                         </div>
+                        {selectedChild && (
+                            <div className="md:hidden fixed bottom-0 inset-x-0 p-3 bg-white/90 backdrop-blur-sm border-t border-gray-100 z-30">
+                                {contextualFooterAd ? (
+                                    <a
+                                        href={contextualFooterAd.linkUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={() => trackAdEvent(`footer:${contextualFooterAd.id}`, "click", { slot: "contextual_footer_mobile" })}
+                                        className="relative flex items-center gap-3 rounded-xl border border-purple-200 bg-purple-50 px-3 py-2.5"
+                                    >
+                                        {contextualFooterAd.imageUrl ? (
+                                            <img src={contextualFooterAd.imageUrl} alt={contextualFooterAd.title} className="w-10 h-10 rounded-lg object-cover border border-purple-200" />
+                                        ) : (
+                                            <GiftIcon className="w-5 h-5 text-purple-600" />
+                                        )}
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center justify-between gap-2 mb-0.5">
+                                                {contextualFooterAd.category ? (
+                                                    <span className={`inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-bold ${getRecommendationCategoryClassName(contextualFooterAd.category)}`}>
+                                                        {contextualFooterAd.category}
+                                                    </span>
+                                                ) : <span />}
+                                                {contextualFooterAd.badgeActive && contextualFooterAd.badgeText && (
+                                                    <span className={`shrink-0 max-w-[112px] px-2 py-0.5 rounded-md text-[8px] leading-tight font-black uppercase tracking-tight whitespace-normal break-words text-center line-clamp-1 ${getRecommendationBadgeClassName(contextualFooterAd.badgeType)}`}>
+                                                        {contextualFooterAd.badgeText}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-[12px] font-bold text-purple-800 line-clamp-1 leading-tight">{contextualFooterAd.title}</p>
+                                            <p className="text-[11px] text-purple-600 line-clamp-2 leading-snug">{contextualFooterAd.description || "Oferta contextual para você"}</p>
+                                        </div>
+                                    </a>
+                                ) : (
+                                    <AdSlot placement="MOBILE_BANNER" />
+                                )}
+                            </div>
+                        )}
                     </div>
                 );
         }
@@ -3448,217 +1997,16 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                 onClose={() => setAddHabitModalOpen(false)} 
                 selectedChildId={selectedChildId} 
                 viewedDate={viewedDate}
-                importedTemplateIds={importedRoutineTemplateIds}
                 onHabitAdded={handleHabitAdded}
                 onHabitExists={() => showToast('Este hábito já existe para as pessoas selecionadas.', 'warning')}
                 onNoChildSelected={() => showToast('Selecione pelo menos 1 pessoa.', 'error')}
-                onImportNow={() => {
-                    setAddHabitModalOpen(false);
-                    setRoutineLibraryInitialArea("all");
-                    setCurrentView("routineLibrary");
-                }}
             />}
             {isManageRewardsModalOpen && <ManageRewardsModal onClose={() => setManageRewardsModalOpen(false)} />}
             {isProgressModalOpen && <ProgressDashboardModal onClose={() => setProgressModalOpen(false)} />}
             {isRewardShopOpen && selectedChild && <ParentRewardShopModal child={selectedChild} onClose={() => setRewardShopOpen(false)} />}
-            {isProfileModalOpen && (
-                <UserProfileModal
-                    onClose={() => setProfileModalOpen(false)}
-                    onEditSecondaryProfile={(childId) => {
-                        const childToEdit = children.find((child) => child.id === childId);
-                        if (!childToEdit) return;
-                        setProfileModalOpen(false);
-                        setEditingChild(childToEdit);
-                    }}
-                />
-            )}
+            {isProfileModalOpen && <UserProfileModal onClose={() => setProfileModalOpen(false)} />}
             {isManageMembersModalOpen && <ManageFamilyMembersModal onClose={() => setManageMembersModalOpen(false)} />}
             {isManageManagersModalOpen && <ManageManagersModal onClose={() => setManageManagersModalOpen(false)} />}
-            {isAchievementShareOpen && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[175] p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-lg font-bold text-gray-800">😄 Causar inveja</h3>
-                            <button
-                                type="button"
-                                onClick={() => setAchievementShareOpen(false)}
-                                className="text-sm font-semibold text-gray-500"
-                            >
-                                Fechar
-                            </button>
-                        </div>
-                        <p className="text-sm text-gray-600">
-                            Escolha como deseja compartilhar sua conquista de hoje.
-                        </p>
-                        <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-                            <p className="text-xs font-bold text-gray-600">Formato</p>
-                            <div className="flex flex-wrap gap-2">
-                                {[
-                                    { key: "summary", label: "Resumo" },
-                                    { key: "list", label: "Com lista" },
-                                    { key: "full", label: "Completo" },
-                                ].map((item) => (
-                                    <button
-                                        key={`share-mode-${item.key}`}
-                                        type="button"
-                                        onClick={() => setAchievementShareMode(item.key as AchievementShareMode)}
-                                        className={`px-3 py-1.5 rounded-full text-xs font-bold border ${
-                                            achievementShareMode === item.key
-                                                ? "bg-purple-600 text-white border-purple-600"
-                                                : "bg-white text-gray-600 border-gray-200"
-                                        }`}
-                                    >
-                                        {item.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-                            <p className="text-xs font-bold text-gray-600">Privacidade</p>
-                            <label className="flex items-center gap-2 text-sm text-gray-700">
-                                <input
-                                    type="checkbox"
-                                    checked={achievementShowName}
-                                    onChange={(e) => setAchievementShowName(e.target.checked)}
-                                />
-                                Mostrar nome do perfil
-                            </label>
-                        </div>
-                        <div className="rounded-lg bg-purple-50 border border-purple-100 p-3">
-                            <p className="text-sm font-semibold text-purple-700">
-                                Progresso: {dayProgress.done}/{dayProgress.total} ({dayProgress.percent}%)
-                            </p>
-                            <p className="text-xs text-purple-600 mt-1">
-                                Tarefas concluídas: {completedHabitsForViewedDate.length}
-                            </p>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            <button
-                                type="button"
-                                onClick={() => { void shareAchievementImage(); }}
-                                disabled={isGeneratingAchievementAsset}
-                                className="px-3 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold disabled:opacity-60"
-                            >
-                                Compartilhar
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { void shareAchievementOnWhatsApp(); }}
-                                disabled={isGeneratingAchievementAsset}
-                                className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-60"
-                            >
-                                WhatsApp
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { void downloadAchievementImage(); }}
-                                disabled={isGeneratingAchievementAsset}
-                                className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-bold disabled:opacity-60"
-                            >
-                                Baixar PNG
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-            {pendingLinkAction && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[170] p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl p-5 space-y-3">
-                        <h3 className="text-lg font-bold text-gray-800">Autorizar vínculo profissional</h3>
-                        <p className="text-sm text-gray-600">
-                            {pendingLinkAction.professionalName} deseja vincular você à lista de pacientes.
-                        </p>
-                        {pendingLinkAction.requestedConsentBlocks && (
-                            <p className="text-xs text-gray-500">
-                                Solicitação do profissional:{" "}
-                                {[
-                                    pendingLinkAction.requestedConsentBlocks.personal ? "Pessoais" : null,
-                                    pendingLinkAction.requestedConsentBlocks.profile ? "Perfil/Rotina" : null,
-                                    pendingLinkAction.requestedConsentBlocks.health ? "Saúde" : null,
-                                ]
-                                    .filter(Boolean)
-                                    .join(", ") || "Sem blocos definidos"}
-                            </p>
-                        )}
-                        {children.length > 0 && (
-                            <div className="rounded-lg border border-gray-200 p-3">
-                                <p className="text-xs font-bold text-gray-600 mb-2">Escolha 1 pessoa para vincular</p>
-                                <p className="text-[11px] text-gray-500 mb-2">Para vincular outra pessoa, faça nova autorização.</p>
-                                <div className="flex flex-wrap gap-2">
-                                    {children.map((child) => {
-                                        const isSelected = selectedSharedChildId === child.id;
-                                        return (
-                                            <button
-                                                key={`share-${child.id}`}
-                                                type="button"
-                                                onClick={() => setSelectedSharedChildId(child.id)}
-                                                className={`px-2 py-1 rounded-full text-xs font-semibold border ${
-                                                    isSelected ? "bg-purple-600 text-white border-purple-600" : "bg-white text-gray-600 border-gray-200"
-                                                }`}
-                                            >
-                                                {child.name}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-                        <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-                            <p className="text-xs font-bold text-gray-600">Blocos autorizados</p>
-                            <label className="flex items-center gap-2 text-sm text-gray-700">
-                                <input type="checkbox" checked={sharePersonalBlock} onChange={(e) => setSharePersonalBlock(e.target.checked)} />
-                                Informações pessoais
-                            </label>
-                            <label className="flex items-center gap-2 text-sm text-gray-700">
-                                <input type="checkbox" checked={shareProfileBlock} onChange={(e) => setShareProfileBlock(e.target.checked)} />
-                                Perfil e rotina
-                            </label>
-                            <label className="flex items-center gap-2 text-sm text-gray-700">
-                                <input type="checkbox" checked={shareHealthBlock} onChange={(e) => setShareHealthBlock(e.target.checked)} />
-                                Saúde
-                            </label>
-                            <p className="text-[11px] text-gray-500 pt-1">Prazo inicial do vínculo: 21 dias (você pode estender em Gerenciar vínculos).</p>
-                        </div>
-                        {generatedLinkCode && (
-                            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                                <p className="text-xs font-bold text-emerald-700">Código temporário (10 min)</p>
-                                <p className="text-3xl font-black tracking-[0.3em] text-emerald-800">{generatedLinkCode}</p>
-                                <p className="text-xs text-emerald-700 mt-1">Tempo restante: <span className="font-bold">{generatedCodeCountdownLabel}</span></p>
-                                <p className="text-xs text-emerald-700 mt-1">
-                                    {generatedCodeSecondsRemaining > 0
-                                        ? "Passe este código ao profissional para concluir a vinculação."
-                                        : "Código expirado. Gere um novo código para continuar."}
-                                </p>
-                            </div>
-                        )}
-                        <div className="flex gap-2 pt-1">
-                            <button
-                                type="button"
-                                onClick={() => { void handleRejectProfessionalLink(); }}
-                                disabled={isProcessingLinkAction}
-                                className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-gray-700 font-semibold disabled:opacity-60"
-                            >
-                                Não autorizar
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { void handleApproveProfessionalLink(); }}
-                                disabled={isProcessingLinkAction}
-                                className="flex-1 px-3 py-2 rounded-lg bg-purple-600 text-white font-semibold disabled:opacity-60"
-                            >
-                                {isProcessingLinkAction ? "Processando..." : "Autorizar e gerar código"}
-                            </button>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setPendingLinkAction(null)}
-                            className="w-full text-xs font-semibold text-gray-500"
-                        >
-                            Fechar
-                        </button>
-                    </div>
-                </div>
-            )}
             
             {canWriteHabits && confirmingDelete && (
                 <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[80] p-4">
@@ -3697,14 +2045,9 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                             imageClassName="w-9 h-9 rounded-full object-cover border border-gray-200"
                                         />
                                         <span className="truncate">{child.name}</span>
-                                        {isPrincipalProfile(child.id) && (
-                                            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">
-                                                #1
-                                            </span>
-                                        )}
                                     </button>
 
-                                    {canWriteChildren && !String(child.id).startsWith("principal-") && (
+                                    {canWriteChildren && (
                                         <button
                                             onClick={() => setEditingChild(child)}
                                             className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-purple-600 transition-opacity"
@@ -3724,9 +2067,8 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                     {canWriteChildren && !isAdmin && (
                         <button
                             type="button"
-                            onClick={handleOpenAddChildModal}
-                            disabled={hasReachedFreemiumProfileLimit}
-                            className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-50"
+                            onClick={() => setAddChildModalOpen(true)}
+                            className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 px-3 py-2 text-sm font-semibold transition-colors"
                         >
                             <PlusIcon className="w-5 h-5" />
                             Adicionar pessoa
@@ -3743,16 +2085,16 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
 
 
             <main className="flex-1 flex flex-col h-full overflow-hidden bg-white min-h-0 relative z-10 pointer-events-auto">
-               {children.length > 0 && currentView !== "dashboard" && currentView !== "supportNetwork" && currentView !== "routineLibrary" && !isAdminPanelView && (
+               {children.length > 0 && currentView !== "dashboard" && !isAdminPanelView && (
                    <div className="md:hidden border-b border-gray-100 px-4 py-2">
                        <div className="relative">
+                           <div className="pointer-events-none absolute left-0 top-0 z-20 h-full w-8 bg-gradient-to-r from-white to-transparent" />
                            <div className="flex items-center gap-2 overflow-x-auto pb-1">
                            {canWriteChildren && !isAdmin && (
                                <button
                                    type="button"
-                                   onClick={handleOpenAddChildModal}
-                                   disabled={hasReachedFreemiumProfileLimit}
-                                   className="sticky left-0 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-purple-200 bg-purple-50 text-purple-700 text-[11px] font-bold whitespace-nowrap shadow-sm disabled:opacity-50"
+                                   onClick={() => setAddChildModalOpen(true)}
+                                   className="sticky left-0 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-purple-200 bg-purple-50 text-purple-700 text-[11px] font-bold whitespace-nowrap shadow-sm"
                                    aria-label="Adicionar pessoa"
                                    title="Adicionar pessoa"
                                >
@@ -3777,11 +2119,6 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                                        imageClassName="w-5 h-5 rounded-full object-cover border border-white/40"
                                    />
                                    <span className="max-w-[108px] truncate">{child.name}</span>
-                                   {isPrincipalProfile(child.id) && (
-                                       <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${selectedChildId === child.id ? "bg-white/20 text-white" : "bg-purple-100 text-purple-700"}`}>
-                                           #1
-                                       </span>
-                                   )}
                                </button>
                            ))}
                            </div>
@@ -3789,44 +2126,6 @@ const extraChildren = orderedChildren.slice(3);     // só daqui em diante tem s
                    </div>
                )}
                {renderCurrentView()}
-               <nav className="md:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-sm border-t border-gray-100 z-30 px-2.5 pt-0.5 pb-[max(0.2rem,env(safe-area-inset-bottom))]">
-                   <div className="grid grid-cols-5 items-end gap-1 text-[10px]">
-                       <button type="button" onClick={() => setCurrentView("dashboard")} className={`flex flex-col items-center gap-0.5 ${currentView === "dashboard" ? "text-purple-700 font-bold" : "text-gray-600"}`}>
-                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-5 h-5">
-                               <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12 12 3l9.75 9M4.5 10.5V21h15V10.5" />
-                           </svg>
-                           <span>Início</span>
-                       </button>
-                       <button type="button" onClick={() => setCurrentView("supportNetwork")} className={`flex flex-col items-center gap-0.5 ${currentView === "supportNetwork" ? "text-purple-700 font-bold" : "text-gray-600"}`}>
-                           <UserIcon className="w-5 h-5" />
-                           <span>Profissionais</span>
-                       </button>
-                       <button type="button" onClick={() => setCurrentView("dashboard")} className="flex flex-col items-center -mt-6">
-                           <div className="h-[52px] w-[52px] rounded-full border-2 border-yellow-300 bg-gradient-to-b from-purple-700 to-purple-600 text-yellow-200 shadow-md flex flex-col items-center justify-center leading-none">
-                               <span className="text-[10px] font-black">⭐ {selectedChild?.stars ?? 0}</span>
-                               <span className="mt-1 text-[9px] font-black">💎 {selectedChildDiamonds}</span>
-                           </div>
-                       </button>
-                       <button type="button" onClick={() => setCurrentView("recommendations")} className={`flex flex-col items-center gap-0.5 ${currentView === "recommendations" ? "text-purple-700 font-bold" : "text-gray-600"}`}>
-                           <ShoppingBagIcon className="w-5 h-5" />
-                           <span>Shop</span>
-                       </button>
-                       <button
-                           type="button"
-                           onClick={() => {
-                               if (!selectedChild) {
-                                   showToast("Selecione um perfil para adicionar hábito.", "warning");
-                                   return;
-                               }
-                               setAddHabitModalOpen(true);
-                           }}
-                           className="flex flex-col items-center gap-0 rounded-lg px-1 py-0 text-purple-700"
-                       >
-                           <PlusIcon className="w-4 h-4" />
-                           <span className="text-[9px] font-bold">+ Hábitos</span>
-                       </button>
-                   </div>
-               </nav>
             </main>
         </div>
     );
